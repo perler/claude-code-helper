@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Terminal window (same coords as terminal-tree / favourites family) -->
+  <rect x="2" y="3" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <polyline points="5,8 8,10.5 5,13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="10" y1="13" x2="15" y2="13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Claude mascot below: filled body with eye cutouts, two stubby legs -->
+  <path fill-rule="evenodd" fill="currentColor"
+        d="M8 18 H16 V21 H14 V23 H13 V21 H11 V23 H10 V21 H8 Z
+           M9.6 19 h1 v1 h-1 z
+           M13.4 19 h1 v1 h-1 z"/>
+</svg>
