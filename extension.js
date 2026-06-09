@@ -365,6 +365,24 @@ async function startClaude(fav) {
   await launchClaude(fav, false, 'Start');
 }
 
+function favFromUri(uri) {
+  const p = uri && uri.fsPath;
+  if (!p) return null;
+  return { path: p, label: path.basename(p) };
+}
+
+async function startClaudeFromUri(uri) {
+  const fav = favFromUri(uri);
+  if (!fav) { vscode.window.showWarningMessage('Claude Code Helper: no folder selected.'); return; }
+  await startClaude(fav);
+}
+
+async function resumeClaudeFromUri(uri) {
+  const fav = favFromUri(uri);
+  if (!fav) { vscode.window.showWarningMessage('Claude Code Helper: no folder selected.'); return; }
+  await resumeClaude(fav);
+}
+
 async function resumeClaude(fav) {
   if (!fav || !(await checkFavExists(fav))) return;
   const sessions = listSessions(fav.path);
@@ -377,9 +395,26 @@ async function resumeClaude(fav) {
     return;
   }
   if (sessions.length === 1) { await launchClaude(fav, true, 'Resume'); return; }
+  const buildItem = (s, labelOverride, sessionId) => {
+    const m = readSessionMeta(s.file);
+    const title = m.title || s.title || s.id;
+    const when = `${relativeTime(s.mtime)} · ${new Date(s.mtime).toLocaleString()}`;
+    const replySnip = m.lastAssistant ? snippet(oneLine(m.lastAssistant), 140) : null;
+    const leadSnip = (m.firstUserMsg && m.firstUserMsg !== title)
+      ? snippet(oneLine(m.firstUserMsg), 140) : null;
+    const detailParts = [];
+    if (leadSnip) detailParts.push(`💬 ${leadSnip}`);
+    if (replySnip) detailParts.push(`🤖 ${replySnip}`);
+    return {
+      label: labelOverride || `$(history) ${title}`,
+      description: when,
+      detail: detailParts.join('  ·  ') || undefined,
+      sessionId,
+    };
+  };
   const items = [
-    { label: '$(debug-rerun) Latest session', description: relativeTime(sessions[0].mtime), detail: sessions[0].title || sessions[0].id, sessionId: true },
-    ...sessions.map((s) => ({ label: `$(history) ${s.title || s.id}`, description: relativeTime(s.mtime), detail: s.id, sessionId: s.id })),
+    buildItem(sessions[0], `$(debug-rerun) Latest session — ${sessions[0].title || readSessionMeta(sessions[0].file).title || sessions[0].id}`, true),
+    ...sessions.map((s) => buildItem(s, null, s.id)),
   ];
   const pick = await vscode.window.showQuickPick(items, {
     placeHolder: `Resume which session in ${fav.label || path.basename(fav.path)}?`,
@@ -694,6 +729,8 @@ function activate(context) {
   reg('claudeHelper.addFromExplorer', (uri) => addFavouriteFromUri(context, uri));
   reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
+  reg('claudeHelper.startClaudeFromExplorer', (uri) => startClaudeFromUri(uri));
+  reg('claudeHelper.resumeClaudeFromExplorer', (uri) => resumeClaudeFromUri(uri));
   reg('claudeHelper.openTerminalHere', (fav) => {
     if (!fav) return;
     const t = vscode.window.createTerminal({ name: fav.label || path.basename(fav.path), cwd: fav.path });

@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -50,6 +50,8 @@
       { "command": "claudeHelper.addFavourite",        "title": "Add Favourite…",            "icon": "$(add)",          "category": "Claude Code Helper" },
       { "command": "claudeHelper.addCurrentWorkspace", "title": "Add Current Workspace",     "icon": "$(root-folder)",  "category": "Claude Code Helper" },
       { "command": "claudeHelper.addFromExplorer",    "title": "Add to Claude Favourites",   "category": "Claude Code Helper" },
+      { "command": "claudeHelper.startClaudeFromExplorer",  "title": "Start Claude Here",  "icon": "$(play)",        "category": "Claude Code Helper" },
+      { "command": "claudeHelper.resumeClaudeFromExplorer", "title": "Resume Claude Here", "icon": "$(debug-rerun)", "category": "Claude Code Helper" },
       { "command": "claudeHelper.refreshFavourites",  "title": "Refresh",                    "icon": "$(refresh)" },
       { "command": "claudeHelper.startClaude",        "title": "Start Claude",               "icon": "$(play)" },
       { "command": "claudeHelper.resumeClaude",       "title": "Resume Claude",              "icon": "$(debug-rerun)" },
@@ -118,7 +120,9 @@
         { "command": "claudeHelper.copySessionPath",   "when": "view == claudeHelper.sessions && viewItem == session", "group": "2_copy@2" }
       ],
       "explorer/context": [
-        { "command": "claudeHelper.addFromExplorer", "when": "explorerResourceIsFolder", "group": "claude-helper@1" }
+        { "command": "claudeHelper.startClaudeFromExplorer",  "when": "explorerResourceIsFolder", "group": "claude-helper@1" },
+        { "command": "claudeHelper.resumeClaudeFromExplorer", "when": "explorerResourceIsFolder", "group": "claude-helper@2" },
+        { "command": "claudeHelper.addFromExplorer",          "when": "explorerResourceIsFolder", "group": "claude-helper@3" }
       ]
     },
     "keybindings": [
