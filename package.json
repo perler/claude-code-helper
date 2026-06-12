@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -31,6 +31,10 @@
           "name": "Running Sessions"
         },
         {
+          "id": "claudeHelper.agentSessions",
+          "name": "Agent Sessions"
+        },
+        {
           "id": "claudeHelper.sessions",
           "name": "Recent Sessions"
         }
@@ -44,6 +48,10 @@
       {
         "view": "claudeHelper.terminals",
         "contents": "No open terminals.\n[New Terminal](command:workbench.action.terminal.new)"
+      },
+      {
+        "view": "claudeHelper.agentSessions",
+        "contents": "No agent sessions yet.\nTag an Asana task `claude-go` to spawn one."
       }
     ],
     "commands": [
@@ -78,7 +86,16 @@
       { "command": "claudeHelper.openSessionFolder",  "title": "Open Project Folder",        "icon": "$(folder-opened)" },
       { "command": "claudeHelper.copySessionId",      "title": "Copy Session ID" },
       { "command": "claudeHelper.copySessionPath",    "title": "Copy Session File Path" },
-      { "command": "claudeHelper.revealSessionFile",  "title": "Reveal Session File in Explorer" }
+      { "command": "claudeHelper.revealSessionFile",  "title": "Reveal Session File in Explorer" },
+
+      { "command": "claudeHelper.refreshAgentSessions",  "title": "Refresh",                 "icon": "$(refresh)" },
+      { "command": "claudeHelper.attachAgentSession",    "title": "Attach Session",          "icon": "$(plug)" },
+      { "command": "claudeHelper.resumeAgentSession",    "title": "Resume Session",          "icon": "$(debug-rerun)" },
+      { "command": "claudeHelper.openAgentSessionFolder","title": "Open Project Folder",     "icon": "$(folder-opened)" },
+      { "command": "claudeHelper.openAgentTask",         "title": "Open Asana Task",         "icon": "$(link-external)" },
+      { "command": "claudeHelper.copyAgentSessionId",    "title": "Copy Session ID" },
+      { "command": "claudeHelper.killAgentSession",      "title": "Kill Session",            "icon": "$(trash)" },
+      { "command": "claudeHelper.removeAgentSession",    "title": "Remove from List" }
     ],
     "menus": {
       "view/title": [
@@ -87,7 +104,8 @@
         { "command": "claudeHelper.refreshFavourites",   "when": "view == claudeHelper.favourites", "group": "navigation@3" },
         { "command": "claudeHelper.newTerminal",         "when": "view == claudeHelper.terminals",  "group": "navigation@1" },
         { "command": "claudeHelper.refreshTerminals",    "when": "view == claudeHelper.terminals",  "group": "navigation@2" },
-        { "command": "claudeHelper.refreshSessions",     "when": "view == claudeHelper.sessions",   "group": "navigation@1" }
+        { "command": "claudeHelper.refreshSessions",     "when": "view == claudeHelper.sessions",   "group": "navigation@1" },
+        { "command": "claudeHelper.refreshAgentSessions","when": "view == claudeHelper.agentSessions", "group": "navigation@1" }
       ],
       "view/item/context": [
         { "command": "claudeHelper.startClaude",       "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "inline@1" },
@@ -117,7 +135,17 @@
         { "command": "claudeHelper.openSessionFolder", "when": "view == claudeHelper.sessions && viewItem == session", "group": "1_open@2" },
         { "command": "claudeHelper.revealSessionFile", "when": "view == claudeHelper.sessions && viewItem == session", "group": "1_open@3" },
         { "command": "claudeHelper.copySessionId",     "when": "view == claudeHelper.sessions && viewItem == session", "group": "2_copy@1" },
-        { "command": "claudeHelper.copySessionPath",   "when": "view == claudeHelper.sessions && viewItem == session", "group": "2_copy@2" }
+        { "command": "claudeHelper.copySessionPath",   "when": "view == claudeHelper.sessions && viewItem == session", "group": "2_copy@2" },
+
+        { "command": "claudeHelper.attachAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "inline@1" },
+        { "command": "claudeHelper.resumeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded", "group": "inline@1" },
+        { "command": "claudeHelper.attachAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "1_open@1" },
+        { "command": "claudeHelper.resumeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "1_open@2" },
+        { "command": "claudeHelper.openAgentSessionFolder", "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "1_open@3" },
+        { "command": "claudeHelper.openAgentTask",          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "1_open@4" },
+        { "command": "claudeHelper.copyAgentSessionId",     "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "2_copy@1" },
+        { "command": "claudeHelper.killAgentSession",       "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "9_destroy@1" },
+        { "command": "claudeHelper.removeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded", "group": "9_destroy@1" }
       ],
       "explorer/context": [
         { "command": "claudeHelper.startClaudeFromExplorer",  "when": "explorerResourceIsFolder", "group": "claude-helper@1" },
@@ -151,7 +179,9 @@
         "claudeHelper.showTerminalsWithoutCwd":  { "type": "boolean", "default": true,     "description": "Show terminals whose working directory is not yet known." },
         "claudeHelper.shortenPaths":             { "type": "boolean", "default": true,     "description": "Shorten paths by replacing $HOME with ~." },
         "claudeHelper.sessionsMaxAgeDays":       { "type": "number",  "default": 7,        "description": "Only show sessions modified within the last N days in Recent Sessions." },
-        "claudeHelper.sessionsMaxItems":        { "type": "number",  "default": 100,      "description": "Maximum number of recent sessions to list." }
+        "claudeHelper.sessionsMaxItems":        { "type": "number",  "default": 100,      "description": "Maximum number of recent sessions to list." },
+        "claudeHelper.agentIndexPath":          { "type": "string",  "default": "~/.claude/agent-sessions.json", "description": "Index file the Asana→Claude bridge writes; powers the Agent Sessions view." },
+        "claudeHelper.agentTmuxSocket":         { "type": "string",  "default": "claude", "description": "tmux socket name (-L) used by bridge-spawned agent sessions." }
       }
     }
   }

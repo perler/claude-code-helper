@@ -670,6 +670,135 @@ async function resumeSessionNode(node) {
   await launchClaude(fav, s.id, 'Resume');
 }
 
+// ─── agent sessions (Asana → Claude bridge) ───────────────────────────────────
+//
+// The bridge spawns each picked-up task as an INTERACTIVE claude inside a
+// detached tmux session (on a dedicated -L socket) and records it in an index
+// file. These sessions run in the background — outside VS Code — so they never
+// appear in "Running Sessions". This view surfaces them: 🟢 live ones attach
+// (reconnect to the running process), ⚫ ended ones resume from the transcript.
+
+function expandHome(p) {
+  if (!p) return p;
+  return p.startsWith('~') ? path.join(os.homedir(), p.slice(1)) : p;
+}
+
+function agentSocket() {
+  return cfg().get('agentTmuxSocket') || 'claude';
+}
+
+function agentIndexFile() {
+  return expandHome(cfg().get('agentIndexPath') || '~/.claude/agent-sessions.json');
+}
+
+function readAgentIndex() {
+  try {
+    const data = JSON.parse(fs.readFileSync(agentIndexFile(), 'utf8'));
+    return Array.isArray(data.sessions) ? data.sessions : [];
+  } catch { return []; }
+}
+
+function writeAgentIndex(sessions) {
+  const file = agentIndexFile();
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify({ sessions }, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+function tmuxAlive(name) {
+  try {
+    return cp.spawnSync('tmux', ['-L', agentSocket(), 'has-session', '-t', name]).status === 0;
+  } catch { return false; }
+}
+
+function agentSessionFile(entry) {
+  return path.join(os.homedir(), '.claude', 'projects', encodeProjectDir(entry.dir), `${entry.sessionId}.jsonl`);
+}
+
+function buildAgentTooltip(entry, live, meta) {
+  const blocks = [];
+  if (meta && meta.lastAssistant) blocks.push({ label: 'Last reply', body: meta.lastAssistant, emoji: '🤖' });
+  const metaLines = [];
+  metaLines.push(`📁 \`${entry.dir}\``);
+  if (entry.permalink) metaLines.push(`🔗 ${entry.permalink}`);
+  metaLines.push(`🖥️ \`tmux -L ${agentSocket()} attach -t ${entry.tmuxName}\``);
+  metaLines.push(`🆔 \`${entry.sessionId}\``);
+  metaLines.push(live ? '🟢 running' : '⚫ ended');
+  if (entry.createdAt) metaLines.push(`🕐 started ${new Date(entry.createdAt).toLocaleString()}`);
+  return buildTooltip({
+    title: entry.displayName,
+    lead: meta ? (meta.firstUserMsg || meta.summary) : null,
+    blocks,
+    meta: metaLines,
+  });
+}
+
+class AgentSessionsProvider {
+  constructor() {
+    this._em = new vscode.EventEmitter();
+    this.onDidChangeTreeData = this._em.event;
+  }
+  refresh() { this._em.fire(); }
+  getTreeItem(node) {
+    const e = node.entry;
+    const live = node.live;
+    const item = new vscode.TreeItem(e.displayName || path.basename(e.dir), vscode.TreeItemCollapsibleState.None);
+    item.description = live ? '🟢 running' : '⚫ ended';
+    let meta = null;
+    try { meta = readSessionMeta(agentSessionFile(e)); } catch {}
+    item.tooltip = buildAgentTooltip(e, live, meta);
+    item.contextValue = live ? 'agentSessionLive' : 'agentSessionEnded';
+    item.iconPath = new vscode.ThemeIcon(
+      live ? 'vm-running' : 'vm-outline',
+      new vscode.ThemeColor(live ? 'terminal.ansiGreen' : 'disabledForeground')
+    );
+    item.command = live
+      ? { command: 'claudeHelper.attachAgentSession', title: 'Attach Session', arguments: [node] }
+      : { command: 'claudeHelper.resumeAgentSession', title: 'Resume Session', arguments: [node] };
+    return item;
+  }
+  getChildren() {
+    const entries = readAgentIndex();
+    const nodes = entries.map((entry) => ({ entry, live: tmuxAlive(entry.tmuxName) }));
+    // live first, then most-recently started
+    nodes.sort((a, b) => (b.live - a.live) || (String(b.entry.createdAt).localeCompare(String(a.entry.createdAt))));
+    return nodes;
+  }
+}
+
+function attachAgentSession(node) {
+  if (!node || !node.entry) return;
+  const e = node.entry;
+  if (!tmuxAlive(e.tmuxName)) {
+    vscode.window.showWarningMessage(`Agent session "${e.displayName}" is no longer running — resuming instead.`);
+    return resumeAgentSession(node);
+  }
+  const name = `▶ ${e.displayName}`;
+  let terminal = vscode.window.terminals.find((t) => t.name === name);
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: fs.existsSync(e.dir) ? e.dir : undefined });
+  terminal.show();
+  terminal.sendText(`tmux -L ${agentSocket()} attach -t ${e.tmuxName}`);
+}
+
+async function resumeAgentSession(node) {
+  if (!node || !node.entry) return;
+  const e = node.entry;
+  if (!fs.existsSync(e.dir)) {
+    vscode.window.showErrorMessage(`Project folder no longer exists: ${e.dir}`);
+    return;
+  }
+  await launchClaude({ path: e.dir, label: e.displayName }, e.sessionId, 'Resume');
+}
+
+let agentProvider;
+
+function removeAgentEntry(node) {
+  if (!node || !node.entry) return;
+  const sessions = readAgentIndex().filter((s) => s.tmuxName !== node.entry.tmuxName);
+  writeAgentIndex(sessions);
+  agentProvider.refresh();
+}
+
 // ─── activation ──────────────────────────────────────────────────────────────
 
 async function applyFastHoverOnce(context) {
@@ -707,6 +836,12 @@ function activate(context) {
     treeDataProvider: sessProvider, showCollapseAll: true,
   });
   context.subscriptions.push(sessView);
+
+  agentProvider = new AgentSessionsProvider();
+  const agentView = vscode.window.createTreeView('claudeHelper.agentSessions', {
+    treeDataProvider: agentProvider, showCollapseAll: false,
+  });
+  context.subscriptions.push(agentView);
 
   const reg = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
@@ -843,6 +978,37 @@ function activate(context) {
     vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(node.session.file));
   });
 
+  // agent sessions commands
+  reg('claudeHelper.refreshAgentSessions', () => agentProvider.refresh());
+  reg('claudeHelper.attachAgentSession', (node) => attachAgentSession(node));
+  reg('claudeHelper.resumeAgentSession', (node) => resumeAgentSession(node));
+  reg('claudeHelper.openAgentSessionFolder', (node) => {
+    if (!node || !node.entry) return;
+    vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(node.entry.dir), { forceNewWindow: true });
+  });
+  reg('claudeHelper.openAgentTask', (node) => {
+    if (!node || !node.entry || !node.entry.permalink) {
+      vscode.window.showInformationMessage('No Asana link recorded for this session.');
+      return;
+    }
+    vscode.env.openExternal(vscode.Uri.parse(node.entry.permalink));
+  });
+  reg('claudeHelper.copyAgentSessionId', (node) => {
+    if (!node || !node.entry) return;
+    vscode.env.clipboard.writeText(node.entry.sessionId);
+    vscode.window.setStatusBarMessage(`Copied session id: ${node.entry.sessionId}`, 2000);
+  });
+  reg('claudeHelper.killAgentSession', async (node) => {
+    if (!node || !node.entry) return;
+    const c = await vscode.window.showWarningMessage(
+      `Kill agent session "${node.entry.displayName}"? The claude process will stop.`, { modal: true }, 'Kill'
+    );
+    if (c !== 'Kill') return;
+    try { cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', node.entry.tmuxName]); } catch {}
+    removeAgentEntry(node);
+  });
+  reg('claudeHelper.removeAgentSession', (node) => removeAgentEntry(node));
+
   reg('claudeHelper.revealActiveTerminalCwd', () => {
     const t = vscode.window.activeTerminal;
     if (!t) { vscode.window.showInformationMessage('No active terminal.'); return; }
@@ -858,13 +1024,25 @@ function activate(context) {
     vscode.window.onDidChangeActiveTerminal(refreshTerms),
     vscode.window.onDidChangeTerminalShellIntegration && vscode.window.onDidChangeTerminalShellIntegration(refreshTerms),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('claudeHelper')) { favProvider.refresh(); termProvider.refresh(); sessProvider.refresh(); }
+      if (e.affectsConfiguration('claudeHelper')) { favProvider.refresh(); termProvider.refresh(); sessProvider.refresh(); agentProvider.refresh(); }
     })
   );
 
   // Sessions: light periodic refresh (every 60s) so relative times and new sessions appear.
   const sessTimer = setInterval(() => sessProvider.refresh(), 60_000);
   context.subscriptions.push({ dispose: () => clearInterval(sessTimer) });
+
+  // Agent Sessions: faster refresh (15s) so live/ended status and new pickups
+  // appear promptly, plus a watcher on the index file for instant updates.
+  const agentTimer = setInterval(() => agentProvider.refresh(), 15_000);
+  context.subscriptions.push({ dispose: () => clearInterval(agentTimer) });
+  try {
+    const idxFile = agentIndexFile();
+    const watcher = fs.watch(path.dirname(idxFile), (_evt, fname) => {
+      if (!fname || fname.startsWith(path.basename(idxFile))) agentProvider.refresh();
+    });
+    context.subscriptions.push({ dispose: () => watcher.close() });
+  } catch { /* dir may not exist yet; timer still covers it */ }
 }
 
 function deactivate() {}
