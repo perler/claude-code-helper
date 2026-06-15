@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.5.1",
+  "version": "0.5.3",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -183,7 +183,8 @@
         "claudeHelper.sessionsMaxAgeDays":       { "type": "number",  "default": 7,        "description": "Only show sessions modified within the last N days in Recent Sessions." },
         "claudeHelper.sessionsMaxItems":        { "type": "number",  "default": 100,      "description": "Maximum number of recent sessions to list." },
         "claudeHelper.agentIndexPath":          { "type": "string",  "default": "~/.claude/agent-sessions.json", "description": "Index file the Asana→Claude bridge writes; powers the Agent Sessions view." },
-        "claudeHelper.agentTmuxSocket":         { "type": "string",  "default": "claude", "description": "tmux socket name (-L) used by bridge-spawned agent sessions." }
+        "claudeHelper.agentTmuxSocket":         { "type": "string",  "default": "claude", "description": "tmux socket name (-L) used by bridge-spawned agent sessions." },
+        "claudeHelper.useTmux":                 { "type": "boolean", "default": true,     "description": "Run Start/Resume inside a tmux session on the agent socket (and attach the terminal to it) so sessions are reachable from Claude Mobile and survive reloads. Turn off to launch Claude directly in the terminal (legacy behavior)." }
       }
     }
   }

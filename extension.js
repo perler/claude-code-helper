@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const cp = require('child_process');
+const crypto = require('crypto');
 
 // ─── shared ──────────────────────────────────────────────────────────────────
 
@@ -351,9 +352,74 @@ async function checkFavExists(fav) {
   return true;
 }
 
+// When useTmux is on (default), an internal-terminal launch runs Claude inside a
+// detached tmux session on the shared `-L claude` socket and the VS Code terminal
+// attaches to it. This makes every session reachable from Claude Mobile (phone)
+// too, and lets sessions survive closing the tab / reloading code-server.
+function useTmux() { return cfg().get('useTmux') !== false; }
+
+function tmuxHasSession(name) {
+  try { return cp.spawnSync('tmux', ['-L', agentSocket(), 'has-session', '-t', name]).status === 0; }
+  catch { return false; }
+}
+function uniqueAgentTmuxName(dir) {
+  const home = os.homedir();
+  const rel = dir.startsWith(home) ? dir.slice(home.length) : dir;
+  const base = ('claude' + rel).replace(/[^a-zA-Z0-9-]/g, '-').replace(/-+/g, '-').slice(0, 48);
+  let name = base, n = 1;
+  const idx = readAgentIndex();
+  while (tmuxHasSession(name) || idx.some((e) => e.tmuxName === name)) name = base.slice(0, 44) + '-' + (++n);
+  return name;
+}
+// {id, runArg[]} for a launch: resume given id, continue -> most-recent id, else new id
+function resolveSessionId(dir, resumeArg) {
+  if (typeof resumeArg === 'string' && resumeArg) return { id: resumeArg, runArg: ['--resume', resumeArg] };
+  if (resumeArg === true) { const r = listSessions(dir)[0]; if (r) return { id: r.id, runArg: ['--resume', r.id] }; }
+  const id = crypto.randomUUID();
+  return { id, runArg: ['--session-id', id] };
+}
+function launchClaudeTmux(fav, resumeArg, verb) {
+  const dir = fav.path;
+  const c = cfg();
+  const bin = c.get('claudeCommand') || 'claude';
+  const { id, runArg } = resolveSessionId(dir, resumeArg);
+  let entry = readAgentIndex().find((e) => e.sessionId === id);
+  let tmuxName = entry && entry.tmuxName;
+  if (!tmuxName || !tmuxHasSession(tmuxName)) {
+    tmuxName = tmuxName || uniqueAgentTmuxName(dir);
+    const parts = [bin];
+    if (c.get('skipPermissions')) parts.push('--dangerously-skip-permissions');
+    parts.push(...runArg);
+    const extra = (c.get('cliFlags') || '').trim(); if (extra) parts.push(extra);
+    const cmd = parts.join(' ');
+    const runner = path.join(dir, '.run-claude.sh');
+    try {
+      fs.writeFileSync(runner,
+        `#!/usr/bin/env bash\ncd ${JSON.stringify(dir)}\n${cmd}\necho\necho "[claude session ended — resume with: ${bin} --resume ${id} --dangerously-skip-permissions]"\nexec bash\n`,
+        { mode: 0o755 });
+    } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
+    try {
+      cp.execFileSync('tmux', ['-L', agentSocket(), 'new-session', '-d', '-s', tmuxName, '-c', dir, `bash ${runner}`]);
+    } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: tmux launch failed — ${e.message}`); return; }
+    cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', '0']);
+    cp.spawnSync('tmux', ['-L', agentSocket(), 'set-option', '-g', 'mouse', 'off']);
+    cp.spawnSync('tmux', ['-L', agentSocket(), 'set-option', '-g', 'status', 'off']);
+    const sessions = readAgentIndex().filter((e) => e.sessionId !== id && e.tmuxName !== tmuxName);
+    sessions.push({ sessionId: id, tmuxName, dir, displayName: fav.label || path.basename(dir), source: 'helper', createdAt: new Date().toISOString() });
+    writeAgentIndex(sessions);
+    if (agentProvider) { try { agentProvider.refresh(); } catch {} }
+  }
+  const name = `${verb} Claude · ${fav.label || path.basename(dir)}`;
+  let terminal = cfg().get('reuseTerminal') ? vscode.window.terminals.find((t) => t.name === name) : null;
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir });
+  terminal.show();
+  terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
+}
+
 async function launchClaude(fav, resumeArg, verb) {
   const mode = await pickTerminalMode();
   if (!mode) return;
+  if (mode === 'internal' && useTmux()) { launchClaudeTmux(fav, resumeArg, verb); return; }
   const cmd = buildClaudeCommand(resumeArg);
   const label = `${verb} Claude · ${fav.label || path.basename(fav.path)}`;
   if (mode === 'external') runInExternalTerminal(fav.path, cmd);
@@ -743,7 +809,9 @@ class AgentSessionsProvider {
     const e = node.entry;
     const live = node.live;
     const item = new vscode.TreeItem(e.displayName || path.basename(e.dir), vscode.TreeItemCollapsibleState.None);
-    item.description = live ? '🟢 running' : '⚫ ended';
+    // Match the other views: name as label, directory as the dimmed description.
+    // Live/ended status is conveyed by the icon colour (and the tooltip).
+    item.description = shortHome(e.dir);
     let meta = null;
     try { meta = readSessionMeta(agentSessionFile(e)); } catch {}
     item.tooltip = buildAgentTooltip(e, live, meta);
