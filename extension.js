@@ -357,6 +357,14 @@ async function checkFavExists(fav) {
 // attaches to it. This makes every session reachable from Claude Mobile (phone)
 // too, and lets sessions survive closing the tab / reloading code-server.
 function useTmux() { return cfg().get('useTmux') !== false; }
+// When useTmux is off but useDtach is on (the default), an internal-terminal launch
+// runs Claude inside a transparent `dtach` session and the VS Code terminal attaches
+// to it. dtach's master keeps draining Claude's output even with no client attached,
+// so closing the tab no longer blocks Claude's stdout (which is what produced the
+// "Stream idle timeout - partial response received" on reconnect). Unlike tmux it has
+// no alternate screen, so native wheel-scroll and select/copy keep working.
+function useDtach() { return cfg().get('useDtach') !== false; }
+function dtachSocketDir() { return expandHome(cfg().get('dtachSocketDir') || '~/.claude/dtach'); }
 
 function tmuxHasSession(name) {
   try { return cp.spawnSync('tmux', ['-L', agentSocket(), 'has-session', '-t', name]).status === 0; }
@@ -416,10 +424,42 @@ function launchClaudeTmux(fav, resumeArg, verb) {
   terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
 }
 
+function launchClaudeDtach(fav, resumeArg, verb) {
+  const dir = fav.path;
+  const c = cfg();
+  const bin = c.get('claudeCommand') || 'claude';
+  const { id, runArg } = resolveSessionId(dir, resumeArg);
+  const parts = [bin];
+  if (c.get('skipPermissions')) parts.push('--dangerously-skip-permissions');
+  parts.push(...runArg);
+  const extra = (c.get('cliFlags') || '').trim(); if (extra) parts.push(extra);
+  const cmd = parts.join(' ');
+  const runner = path.join(dir, '.run-claude.sh');
+  try {
+    fs.writeFileSync(runner,
+      `#!/usr/bin/env bash\ncd ${JSON.stringify(dir)}\n${cmd}\necho\necho "[claude session ended — resume with: ${bin} --resume ${id} --dangerously-skip-permissions]"\nexec bash\n`,
+      { mode: 0o755 });
+  } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
+  let socket;
+  try {
+    const sockDir = dtachSocketDir();
+    fs.mkdirSync(sockDir, { recursive: true });
+    socket = path.join(sockDir, id + '.sock');
+  } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
+  const name = `${verb} Claude · ${fav.label || path.basename(dir)}`;
+  let terminal = cfg().get('reuseTerminal') ? vscode.window.terminals.find((t) => t.name === name) : null;
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir });
+  terminal.show();
+  // -A: attach if the session is already live (reconnect), else create it.
+  // -E: no detach escape char; -z: pass Ctrl-Z through; -r winch: redraw on attach.
+  terminal.sendText(`dtach -A ${JSON.stringify(socket)} -E -z -r winch bash ${JSON.stringify(runner)}`);
+}
+
 async function launchClaude(fav, resumeArg, verb) {
   const mode = await pickTerminalMode();
   if (!mode) return;
   if (mode === 'internal' && useTmux()) { launchClaudeTmux(fav, resumeArg, verb); return; }
+  if (mode === 'internal' && useDtach()) { launchClaudeDtach(fav, resumeArg, verb); return; }
   const cmd = buildClaudeCommand(resumeArg);
   const label = `${verb} Claude · ${fav.label || path.basename(fav.path)}`;
   if (mode === 'external') runInExternalTerminal(fav.path, cmd);
