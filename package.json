@@ -1,193 +1,621 @@
 {
-  "name": "claude-code-helper",
-  "displayName": "Claude Code Helper",
-  "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.5.7",
-  "publisher": "pat-erler",
-  "engines": {
-    "vscode": "^1.80.0"
-  },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
-  "main": "./extension.js",
-  "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "claude-code-helper",
-          "title": "Claude Code Helper",
-          "icon": "resources/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "claude-code-helper": [
-        {
-          "id": "claudeHelper.favourites",
-          "name": "Favourites"
-        },
-        {
-          "id": "claudeHelper.terminals",
-          "name": "Running Sessions"
-        },
-        {
-          "id": "claudeHelper.agentSessions",
-          "name": "Agent Sessions"
-        },
-        {
-          "id": "claudeHelper.sessions",
-          "name": "Recent Sessions"
-        }
-      ]
-    },
-    "viewsWelcome": [
-      {
-        "view": "claudeHelper.favourites",
-        "contents": "No favourites yet.\n[Add Favourite](command:claudeHelper.addFavourite)\n[Add Current Workspace](command:claudeHelper.addCurrentWorkspace)"
-      },
-      {
-        "view": "claudeHelper.terminals",
-        "contents": "No open terminals.\n[New Terminal](command:workbench.action.terminal.new)"
-      },
-      {
-        "view": "claudeHelper.agentSessions",
-        "contents": "No agent sessions yet.\nTag an Asana task `claude` to spawn one."
-      }
-    ],
-    "commands": [
-      { "command": "claudeHelper.addFavourite",        "title": "Add Favourite…",            "icon": "$(add)",          "category": "Claude Code Helper" },
-      { "command": "claudeHelper.addCurrentWorkspace", "title": "Add Current Workspace",     "icon": "$(root-folder)",  "category": "Claude Code Helper" },
-      { "command": "claudeHelper.addFromExplorer",    "title": "Add to Claude Favourites",   "category": "Claude Code Helper" },
-      { "command": "claudeHelper.startClaudeFromExplorer",  "title": "Start Claude Here",  "icon": "$(play)",        "category": "Claude Code Helper" },
-      { "command": "claudeHelper.resumeClaudeFromExplorer", "title": "Resume Claude Here", "icon": "$(debug-rerun)", "category": "Claude Code Helper" },
-      { "command": "claudeHelper.refreshFavourites",  "title": "Refresh",                    "icon": "$(refresh)" },
-      { "command": "claudeHelper.startClaude",        "title": "Start Claude",               "icon": "$(play)" },
-      { "command": "claudeHelper.resumeClaude",       "title": "Resume Claude",              "icon": "$(debug-rerun)" },
-      { "command": "claudeHelper.openTerminalHere",   "title": "Open Terminal Here",         "icon": "$(terminal)" },
-      { "command": "claudeHelper.openFolder",         "title": "Open Folder in New Window",  "icon": "$(folder-opened)" },
-      { "command": "claudeHelper.revealInExplorer",   "title": "Reveal in Explorer" },
-      { "command": "claudeHelper.copyPath",           "title": "Copy Path" },
-      { "command": "claudeHelper.renameFavourite",    "title": "Rename",                     "icon": "$(edit)" },
-      { "command": "claudeHelper.removeFavourite",    "title": "Remove",                     "icon": "$(trash)" },
-      { "command": "claudeHelper.moveUp",             "title": "Move Up",                    "icon": "$(arrow-up)" },
-      { "command": "claudeHelper.moveDown",           "title": "Move Down",                  "icon": "$(arrow-down)" },
-
-      { "command": "claudeHelper.refreshTerminals",   "title": "Refresh",                    "icon": "$(refresh)" },
-      { "command": "claudeHelper.newTerminal",        "title": "New Terminal",               "icon": "$(add)" },
-      { "command": "claudeHelper.focusTerminal",      "title": "Focus Terminal",             "icon": "$(play)" },
-      { "command": "claudeHelper.revealTerminalCwd",  "title": "Reveal CWD in Explorer" },
-      { "command": "claudeHelper.copyTerminalCwd",    "title": "Copy CWD Path" },
-      { "command": "claudeHelper.renameTerminal",     "title": "Rename Terminal",            "icon": "$(edit)" },
-      { "command": "claudeHelper.splitTerminal",      "title": "Split Terminal",             "icon": "$(split-horizontal)" },
-      { "command": "claudeHelper.killTerminal",       "title": "Kill Terminal",              "icon": "$(trash)" },
-
-      { "command": "claudeHelper.refreshSessions",    "title": "Refresh",                    "icon": "$(refresh)" },
-      { "command": "claudeHelper.resumeSession",      "title": "Resume Session",             "icon": "$(debug-rerun)" },
-      { "command": "claudeHelper.openSessionFolder",  "title": "Open Project Folder",        "icon": "$(folder-opened)" },
-      { "command": "claudeHelper.copySessionId",      "title": "Copy Session ID" },
-      { "command": "claudeHelper.copySessionPath",    "title": "Copy Session File Path" },
-      { "command": "claudeHelper.revealSessionFile",  "title": "Reveal Session File in Explorer" },
-
-      { "command": "claudeHelper.refreshAgentSessions",  "title": "Refresh",                 "icon": "$(refresh)" },
-      { "command": "claudeHelper.attachAgentSession",    "title": "Attach Session",          "icon": "$(plug)" },
-      { "command": "claudeHelper.resumeAgentSession",    "title": "Resume Session",          "icon": "$(debug-rerun)" },
-      { "command": "claudeHelper.openAgentSessionFolder","title": "Open Project Folder",     "icon": "$(folder-opened)" },
-      { "command": "claudeHelper.openAgentTask",         "title": "Open Asana Task",         "icon": "$(link-external)" },
-      { "command": "claudeHelper.copyAgentSessionId",    "title": "Copy Session ID" },
-      { "command": "claudeHelper.killAgentSession",      "title": "Kill Session",            "icon": "$(trash)" },
-      { "command": "claudeHelper.removeAgentSession",    "title": "Remove from List",        "icon": "$(close)" }
-    ],
-    "menus": {
-      "view/title": [
-        { "command": "claudeHelper.addFavourite",        "when": "view == claudeHelper.favourites", "group": "navigation@1" },
-        { "command": "claudeHelper.addCurrentWorkspace", "when": "view == claudeHelper.favourites", "group": "navigation@2" },
-        { "command": "claudeHelper.refreshFavourites",   "when": "view == claudeHelper.favourites", "group": "navigation@3" },
-        { "command": "claudeHelper.newTerminal",         "when": "view == claudeHelper.terminals",  "group": "navigation@1" },
-        { "command": "claudeHelper.refreshTerminals",    "when": "view == claudeHelper.terminals",  "group": "navigation@2" },
-        { "command": "claudeHelper.refreshSessions",     "when": "view == claudeHelper.sessions",   "group": "navigation@1" },
-        { "command": "claudeHelper.refreshAgentSessions","when": "view == claudeHelper.agentSessions", "group": "navigation@1" }
-      ],
-      "view/item/context": [
-        { "command": "claudeHelper.startClaude",       "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "inline@1" },
-        { "command": "claudeHelper.resumeClaude",      "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "inline@2" },
-        { "command": "claudeHelper.startClaude",       "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "1_run@1" },
-        { "command": "claudeHelper.resumeClaude",      "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "1_run@2" },
-        { "command": "claudeHelper.openTerminalHere",  "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "2_open@1" },
-        { "command": "claudeHelper.openFolder",        "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "2_open@2" },
-        { "command": "claudeHelper.revealInExplorer",  "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "2_open@3" },
-        { "command": "claudeHelper.copyPath",          "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "2_open@4" },
-        { "command": "claudeHelper.renameFavourite",   "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "3_edit@1" },
-        { "command": "claudeHelper.moveUp",            "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "3_edit@2" },
-        { "command": "claudeHelper.moveDown",          "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "3_edit@3" },
-        { "command": "claudeHelper.removeFavourite",   "when": "view == claudeHelper.favourites && viewItem == favourite", "group": "3_edit@9" },
-
-        { "command": "claudeHelper.focusTerminal",     "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "inline@1" },
-        { "command": "claudeHelper.splitTerminal",     "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "inline@2" },
-        { "command": "claudeHelper.focusTerminal",     "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "1_focus@1" },
-        { "command": "claudeHelper.revealTerminalCwd", "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "1_focus@2" },
-        { "command": "claudeHelper.copyTerminalCwd",   "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "1_focus@3" },
-        { "command": "claudeHelper.splitTerminal",     "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "2_edit@1" },
-        { "command": "claudeHelper.renameTerminal",    "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "2_edit@2" },
-        { "command": "claudeHelper.killTerminal",      "when": "view == claudeHelper.terminals && viewItem == terminal", "group": "9_destroy@1" },
-
-        { "command": "claudeHelper.resumeSession",     "when": "view == claudeHelper.sessions && viewItem == session", "group": "inline@1" },
-        { "command": "claudeHelper.resumeSession",     "when": "view == claudeHelper.sessions && viewItem == session", "group": "1_open@1" },
-        { "command": "claudeHelper.openSessionFolder", "when": "view == claudeHelper.sessions && viewItem == session", "group": "1_open@2" },
-        { "command": "claudeHelper.revealSessionFile", "when": "view == claudeHelper.sessions && viewItem == session", "group": "1_open@3" },
-        { "command": "claudeHelper.copySessionId",     "when": "view == claudeHelper.sessions && viewItem == session", "group": "2_copy@1" },
-        { "command": "claudeHelper.copySessionPath",   "when": "view == claudeHelper.sessions && viewItem == session", "group": "2_copy@2" },
-
-        { "command": "claudeHelper.attachAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "inline@1" },
-        { "command": "claudeHelper.killAgentSession",       "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "inline@2" },
-        { "command": "claudeHelper.resumeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded", "group": "inline@1" },
-        { "command": "claudeHelper.removeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded", "group": "inline@2" },
-        { "command": "claudeHelper.attachAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "1_open@1" },
-        { "command": "claudeHelper.resumeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "1_open@2" },
-        { "command": "claudeHelper.openAgentSessionFolder", "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "1_open@3" },
-        { "command": "claudeHelper.openAgentTask",          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "1_open@4" },
-        { "command": "claudeHelper.copyAgentSessionId",     "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/", "group": "2_copy@1" },
-        { "command": "claudeHelper.killAgentSession",       "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive", "group": "9_destroy@1" },
-        { "command": "claudeHelper.removeAgentSession",     "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded", "group": "9_destroy@1" }
-      ],
-      "explorer/context": [
-        { "command": "claudeHelper.startClaudeFromExplorer",  "when": "explorerResourceIsFolder", "group": "claude-helper@1" },
-        { "command": "claudeHelper.resumeClaudeFromExplorer", "when": "explorerResourceIsFolder", "group": "claude-helper@2" },
-        { "command": "claudeHelper.addFromExplorer",          "when": "explorerResourceIsFolder", "group": "claude-helper@3" }
-      ]
-    },
-    "keybindings": [
-      {
-        "command": "claudeHelper.revealActiveTerminalCwd",
-        "key": "ctrl+alt+t",
-        "mac": "cmd+alt+t"
-      }
-    ],
-    "configuration": {
-      "title": "Claude Code Helper",
-      "properties": {
-        "claudeHelper.claudeCommand":            { "type": "string",  "default": "claude", "description": "Command used to invoke Claude Code." },
-        "claudeHelper.skipPermissions":          { "type": "boolean", "default": true,     "description": "Append --dangerously-skip-permissions (YOLO)." },
-        "claudeHelper.cliFlags":                 { "type": "string",  "default": "",       "description": "Additional CLI flags appended to every claude invocation." },
-        "claudeHelper.defaultTerminalMode":      {
-          "type": "string", "enum": ["ask", "internal", "external"],
-          "enumDescriptions": ["Prompt each time", "Integrated terminal", "External system terminal"],
-          "default": "internal",
-          "description": "Where to run claude when starting/resuming a session."
-        },
-        "claudeHelper.externalTerminalCommand":  { "type": "string",  "default": "",       "description": "External terminal template. Placeholders: {cwd} {cmd}." },
-        "claudeHelper.reuseTerminal":            { "type": "boolean", "default": false,    "description": "Reuse a terminal with the same name instead of opening new ones." },
-        "claudeHelper.confirmRemove":            { "type": "boolean", "default": true,     "description": "Ask for confirmation when removing a favourite." },
-        "claudeHelper.confirmKillTerminal":      { "type": "boolean", "default": true,     "description": "Ask for confirmation when killing a terminal." },
-        "claudeHelper.showTerminalsWithoutCwd":  { "type": "boolean", "default": true,     "description": "Show terminals whose working directory is not yet known." },
-        "claudeHelper.shortenPaths":             { "type": "boolean", "default": true,     "description": "Shorten paths by replacing $HOME with ~." },
-        "claudeHelper.sessionsMaxAgeDays":       { "type": "number",  "default": 7,        "description": "Only show sessions modified within the last N days in Recent Sessions." },
-        "claudeHelper.sessionsMaxItems":        { "type": "number",  "default": 100,      "description": "Maximum number of recent sessions to list." },
-        "claudeHelper.agentIndexPath":          { "type": "string",  "default": "~/.claude/agent-sessions.json", "description": "Index file the Asana→Claude bridge writes; powers the Agent Sessions view." },
-        "claudeHelper.agentTmuxSocket":         { "type": "string",  "default": "claude", "description": "tmux socket name (-L) used by bridge-spawned agent sessions." },
-        "claudeHelper.useTmux":                 { "type": "boolean", "default": true,     "description": "Run Start/Resume inside a tmux session on the agent socket (and attach the terminal to it) so sessions are reachable from Claude Mobile and survive reloads. Turn off to launch Claude directly in the terminal (legacy behavior)." },
-        "claudeHelper.useDtach":                { "type": "boolean", "default": true,     "description": "When useTmux is off, launch Start/Resume inside a transparent dtach session and attach the terminal to it. dtach keeps draining Claude's output even when the browser/tab disconnects, so a closed tab no longer freezes the stream (the 'Stream idle timeout' on reconnect). Unlike tmux it has no alternate-screen, so native scroll + copy keep working. Turn off to launch Claude directly in the terminal (legacy behavior, freezes on disconnect)." },
-        "claudeHelper.dtachSocketDir":          { "type": "string",  "default": "~/.claude/dtach", "description": "Directory for per-session dtach sockets (used when useDtach is on)." }
-      }
-    }
-  }
+	"name": "claude-code-helper",
+	"displayName": "Claude Code Helper",
+	"description": "Favourite directories + open terminal list for Claude Code workflows",
+	"version": "0.6.3",
+	"publisher": "pat-erler",
+	"engines": {
+		"vscode": "^1.80.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
+	"main": "./extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "claude-code-helper",
+					"title": "Claude Code Helper",
+					"icon": "resources/icon.svg"
+				}
+			]
+		},
+		"views": {
+			"claude-code-helper": [
+				{
+					"id": "claudeHelper.favourites",
+					"name": "Favourites"
+				},
+				{
+					"id": "claudeHelper.terminals",
+					"name": "Running Sessions"
+				},
+				{
+					"id": "claudeHelper.agentSessions",
+					"name": "Agent Sessions"
+				},
+				{
+					"id": "claudeHelper.sessions",
+					"name": "Recent Sessions"
+				}
+			]
+		},
+		"viewsWelcome": [
+			{
+				"view": "claudeHelper.favourites",
+				"contents": "No favourites yet.\n[Add Favourite](command:claudeHelper.addFavourite)\n[Add Current Workspace](command:claudeHelper.addCurrentWorkspace)"
+			},
+			{
+				"view": "claudeHelper.terminals",
+				"contents": "No open terminals.\n[New Terminal](command:workbench.action.terminal.new)"
+			},
+			{
+				"view": "claudeHelper.agentSessions",
+				"contents": "No agent sessions yet.\nTag an Asana task `claude` to spawn one."
+			}
+		],
+		"commands": [
+			{
+				"command": "claudeHelper.newSession",
+				"title": "New Claude Session…",
+				"icon": "$(rocket)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.addFavourite",
+				"title": "Add Favourite…",
+				"icon": "$(add)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.addCurrentWorkspace",
+				"title": "Add Current Workspace",
+				"icon": "$(root-folder)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.addFromExplorer",
+				"title": "Add to Claude Favourites",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.startClaudeFromExplorer",
+				"title": "Start Claude Here",
+				"icon": "$(play)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.resumeClaudeFromExplorer",
+				"title": "Resume Claude Here",
+				"icon": "$(debug-rerun)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.refreshFavourites",
+				"title": "Refresh",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "claudeHelper.startClaude",
+				"title": "Start Claude",
+				"icon": "$(play)"
+			},
+			{
+				"command": "claudeHelper.resumeClaude",
+				"title": "Resume Claude",
+				"icon": "$(debug-rerun)"
+			},
+			{
+				"command": "claudeHelper.openTerminalHere",
+				"title": "Open Terminal Here",
+				"icon": "$(terminal)"
+			},
+			{
+				"command": "claudeHelper.openFolder",
+				"title": "Open Folder in New Window",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "claudeHelper.revealInExplorer",
+				"title": "Reveal in Explorer"
+			},
+			{
+				"command": "claudeHelper.copyPath",
+				"title": "Copy Path"
+			},
+			{
+				"command": "claudeHelper.renameFavourite",
+				"title": "Rename",
+				"icon": "$(edit)"
+			},
+			{
+				"command": "claudeHelper.removeFavourite",
+				"title": "Remove",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "claudeHelper.moveUp",
+				"title": "Move Up",
+				"icon": "$(arrow-up)"
+			},
+			{
+				"command": "claudeHelper.moveDown",
+				"title": "Move Down",
+				"icon": "$(arrow-down)"
+			},
+			{
+				"command": "claudeHelper.refreshTerminals",
+				"title": "Refresh",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "claudeHelper.newTerminal",
+				"title": "New Terminal",
+				"icon": "$(add)"
+			},
+			{
+				"command": "claudeHelper.focusTerminal",
+				"title": "Focus Terminal",
+				"icon": "$(play)"
+			},
+			{
+				"command": "claudeHelper.revealTerminalCwd",
+				"title": "Reveal CWD in Explorer"
+			},
+			{
+				"command": "claudeHelper.copyTerminalCwd",
+				"title": "Copy CWD Path"
+			},
+			{
+				"command": "claudeHelper.renameTerminal",
+				"title": "Rename Terminal",
+				"icon": "$(edit)"
+			},
+			{
+				"command": "claudeHelper.splitTerminal",
+				"title": "Split Terminal",
+				"icon": "$(split-horizontal)"
+			},
+			{
+				"command": "claudeHelper.killTerminal",
+				"title": "Kill Terminal",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "claudeHelper.refreshSessions",
+				"title": "Refresh",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "claudeHelper.resumeSession",
+				"title": "Resume Session",
+				"icon": "$(debug-rerun)"
+			},
+			{
+				"command": "claudeHelper.openSessionFolder",
+				"title": "Open Project Folder",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "claudeHelper.copySessionId",
+				"title": "Copy Session ID"
+			},
+			{
+				"command": "claudeHelper.copySessionPath",
+				"title": "Copy Session File Path"
+			},
+			{
+				"command": "claudeHelper.revealSessionFile",
+				"title": "Reveal Session File in Explorer"
+			},
+			{
+				"command": "claudeHelper.refreshAgentSessions",
+				"title": "Refresh",
+				"icon": "$(refresh)"
+			},
+			{
+				"command": "claudeHelper.attachAgentSession",
+				"title": "Attach Session",
+				"icon": "$(plug)"
+			},
+			{
+				"command": "claudeHelper.resumeAgentSession",
+				"title": "Resume Session",
+				"icon": "$(debug-rerun)"
+			},
+			{
+				"command": "claudeHelper.openAgentSessionFolder",
+				"title": "Open Project Folder",
+				"icon": "$(folder-opened)"
+			},
+			{
+				"command": "claudeHelper.openAgentTask",
+				"title": "Open Asana Task",
+				"icon": "$(link-external)"
+			},
+			{
+				"command": "claudeHelper.copyAgentSessionId",
+				"title": "Copy Session ID"
+			},
+			{
+				"command": "claudeHelper.killAgentSession",
+				"title": "Kill Session",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "claudeHelper.removeAgentSession",
+				"title": "Remove from List",
+				"icon": "$(close)"
+			}
+		],
+		"menus": {
+			"view/title": [
+				{
+					"command": "claudeHelper.newSession",
+					"when": "view == claudeHelper.favourites",
+					"group": "navigation@0"
+				},
+				{
+					"command": "claudeHelper.addFavourite",
+					"when": "view == claudeHelper.favourites",
+					"group": "navigation@1"
+				},
+				{
+					"command": "claudeHelper.addCurrentWorkspace",
+					"when": "view == claudeHelper.favourites",
+					"group": "navigation@2"
+				},
+				{
+					"command": "claudeHelper.refreshFavourites",
+					"when": "view == claudeHelper.favourites",
+					"group": "navigation@3"
+				},
+				{
+					"command": "claudeHelper.newTerminal",
+					"when": "view == claudeHelper.terminals",
+					"group": "navigation@1"
+				},
+				{
+					"command": "claudeHelper.refreshTerminals",
+					"when": "view == claudeHelper.terminals",
+					"group": "navigation@2"
+				},
+				{
+					"command": "claudeHelper.refreshSessions",
+					"when": "view == claudeHelper.sessions",
+					"group": "navigation@1"
+				},
+				{
+					"command": "claudeHelper.refreshAgentSessions",
+					"when": "view == claudeHelper.agentSessions",
+					"group": "navigation@1"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "claudeHelper.startClaude",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "inline@1"
+				},
+				{
+					"command": "claudeHelper.resumeClaude",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "inline@2"
+				},
+				{
+					"command": "claudeHelper.startClaude",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "1_run@1"
+				},
+				{
+					"command": "claudeHelper.resumeClaude",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "1_run@2"
+				},
+				{
+					"command": "claudeHelper.openTerminalHere",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "2_open@1"
+				},
+				{
+					"command": "claudeHelper.openFolder",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "2_open@2"
+				},
+				{
+					"command": "claudeHelper.revealInExplorer",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "2_open@3"
+				},
+				{
+					"command": "claudeHelper.copyPath",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "2_open@4"
+				},
+				{
+					"command": "claudeHelper.renameFavourite",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "3_edit@1"
+				},
+				{
+					"command": "claudeHelper.moveUp",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "3_edit@2"
+				},
+				{
+					"command": "claudeHelper.moveDown",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "3_edit@3"
+				},
+				{
+					"command": "claudeHelper.removeFavourite",
+					"when": "view == claudeHelper.favourites && viewItem == favourite",
+					"group": "3_edit@9"
+				},
+				{
+					"command": "claudeHelper.focusTerminal",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "inline@1"
+				},
+				{
+					"command": "claudeHelper.splitTerminal",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "inline@2"
+				},
+				{
+					"command": "claudeHelper.focusTerminal",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "1_focus@1"
+				},
+				{
+					"command": "claudeHelper.revealTerminalCwd",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "1_focus@2"
+				},
+				{
+					"command": "claudeHelper.copyTerminalCwd",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "1_focus@3"
+				},
+				{
+					"command": "claudeHelper.splitTerminal",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "2_edit@1"
+				},
+				{
+					"command": "claudeHelper.renameTerminal",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "2_edit@2"
+				},
+				{
+					"command": "claudeHelper.killTerminal",
+					"when": "view == claudeHelper.terminals && viewItem == terminal",
+					"group": "9_destroy@1"
+				},
+				{
+					"command": "claudeHelper.resumeSession",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "inline@1"
+				},
+				{
+					"command": "claudeHelper.resumeSession",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "1_open@1"
+				},
+				{
+					"command": "claudeHelper.openSessionFolder",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "1_open@2"
+				},
+				{
+					"command": "claudeHelper.revealSessionFile",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "1_open@3"
+				},
+				{
+					"command": "claudeHelper.copySessionId",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "2_copy@1"
+				},
+				{
+					"command": "claudeHelper.copySessionPath",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "2_copy@2"
+				},
+				{
+					"command": "claudeHelper.attachAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+					"group": "inline@1"
+				},
+				{
+					"command": "claudeHelper.killAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+					"group": "inline@2"
+				},
+				{
+					"command": "claudeHelper.resumeAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
+					"group": "inline@1"
+				},
+				{
+					"command": "claudeHelper.removeAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
+					"group": "inline@2"
+				},
+				{
+					"command": "claudeHelper.attachAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+					"group": "1_open@1"
+				},
+				{
+					"command": "claudeHelper.resumeAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
+					"group": "1_open@2"
+				},
+				{
+					"command": "claudeHelper.openAgentSessionFolder",
+					"when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
+					"group": "1_open@3"
+				},
+				{
+					"command": "claudeHelper.openAgentTask",
+					"when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
+					"group": "1_open@4"
+				},
+				{
+					"command": "claudeHelper.copyAgentSessionId",
+					"when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
+					"group": "2_copy@1"
+				},
+				{
+					"command": "claudeHelper.killAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+					"group": "9_destroy@1"
+				},
+				{
+					"command": "claudeHelper.removeAgentSession",
+					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
+					"group": "9_destroy@1"
+				}
+			],
+			"explorer/context": [
+				{
+					"command": "claudeHelper.startClaudeFromExplorer",
+					"when": "explorerResourceIsFolder",
+					"group": "claude-helper@1"
+				},
+				{
+					"command": "claudeHelper.resumeClaudeFromExplorer",
+					"when": "explorerResourceIsFolder",
+					"group": "claude-helper@2"
+				},
+				{
+					"command": "claudeHelper.addFromExplorer",
+					"when": "explorerResourceIsFolder",
+					"group": "claude-helper@3"
+				}
+			]
+		},
+		"keybindings": [
+			{
+				"command": "claudeHelper.revealActiveTerminalCwd",
+				"key": "ctrl+alt+t",
+				"mac": "cmd+alt+t"
+			}
+		],
+		"configuration": {
+			"title": "Claude Code Helper",
+			"properties": {
+				"claudeHelper.claudeCommand": {
+					"type": "string",
+					"default": "claude",
+					"description": "Command used to invoke Claude Code."
+				},
+				"claudeHelper.skipPermissions": {
+					"type": "boolean",
+					"default": true,
+					"description": "Append --dangerously-skip-permissions (YOLO)."
+				},
+				"claudeHelper.cliFlags": {
+					"type": "string",
+					"default": "",
+					"description": "Additional CLI flags appended to every claude invocation."
+				},
+				"claudeHelper.defaultTerminalMode": {
+					"type": "string",
+					"enum": [
+						"ask",
+						"internal",
+						"external"
+					],
+					"enumDescriptions": [
+						"Prompt each time",
+						"Integrated terminal",
+						"External system terminal"
+					],
+					"default": "internal",
+					"description": "Where to run claude when starting/resuming a session."
+				},
+				"claudeHelper.externalTerminalCommand": {
+					"type": "string",
+					"default": "",
+					"description": "External terminal template. Placeholders: {cwd} {cmd}."
+				},
+				"claudeHelper.reuseTerminal": {
+					"type": "boolean",
+					"default": false,
+					"description": "Reuse a terminal with the same name instead of opening new ones."
+				},
+				"claudeHelper.confirmRemove": {
+					"type": "boolean",
+					"default": true,
+					"description": "Ask for confirmation when removing a favourite."
+				},
+				"claudeHelper.confirmKillTerminal": {
+					"type": "boolean",
+					"default": true,
+					"description": "Ask for confirmation when killing a terminal."
+				},
+				"claudeHelper.showTerminalsWithoutCwd": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show terminals whose working directory is not yet known."
+				},
+				"claudeHelper.shortenPaths": {
+					"type": "boolean",
+					"default": true,
+					"description": "Shorten paths by replacing $HOME with ~."
+				},
+				"claudeHelper.sessionsMaxAgeDays": {
+					"type": "number",
+					"default": 7,
+					"description": "Only show sessions modified within the last N days in Recent Sessions."
+				},
+				"claudeHelper.sessionsMaxItems": {
+					"type": "number",
+					"default": 100,
+					"description": "Maximum number of recent sessions to list."
+				},
+				"claudeHelper.agentIndexPath": {
+					"type": "string",
+					"default": "~/.claude/agent-sessions.json",
+					"description": "Index file the Asana→Claude bridge writes; powers the Agent Sessions view."
+				},
+				"claudeHelper.agentTmuxSocket": {
+					"type": "string",
+					"default": "claude",
+					"description": "tmux socket name (-L) used by bridge-spawned agent sessions."
+				},
+				"claudeHelper.useTmux": {
+					"type": "boolean",
+					"default": true,
+					"description": "Run Start/Resume inside a tmux session on the agent socket (and attach the terminal to it) so sessions are reachable from Claude Mobile and survive reloads. Turn off to launch Claude directly in the terminal (legacy behavior)."
+				},
+				"claudeHelper.useDtach": {
+					"type": "boolean",
+					"default": true,
+					"description": "When useTmux is off, launch Start/Resume inside a transparent dtach session and attach the terminal to it. dtach keeps draining Claude's output even when the browser/tab disconnects, so a closed tab no longer freezes the stream (the 'Stream idle timeout' on reconnect). Unlike tmux it has no alternate-screen, so native scroll + copy keep working. Turn off to launch Claude directly in the terminal (legacy behavior, freezes on disconnect)."
+				},
+				"claudeHelper.dtachSocketDir": {
+					"type": "string",
+					"default": "~/.claude/dtach",
+					"description": "Directory for per-session dtach sockets (used when useDtach is on)."
+				},
+				"claudeHelper.scratchDir": {
+					"type": "string",
+					"default": "~/tasks",
+					"description": "Base directory for the New Claude Session button. Each session gets a timestamped subfolder here; rename/move it later once the work is permanent."
+				}
+			}
+		}
+	},
+	"__metadata": {
+		"installedTimestamp": 1782140847526,
+		"targetPlatform": "undefined",
+		"size": 72534
+	}
 }

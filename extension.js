@@ -46,6 +46,26 @@ function buildClaudeCommand(resumeArg) {
   return parts.join(' ');
 }
 
+// Timestamp used as the fallback session name when the user leaves the name
+// blank — same format as the favourites-tab scratch launcher (YYYY-MM-DD-HHMM).
+function timestampName() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+// Prompt for a session name on every new-session launch. Empty → timestamp.
+// Returns the chosen name, or null if the user cancelled (Esc).
+async function promptSessionName() {
+  const input = await vscode.window.showInputBox({
+    title: 'Start Claude Session',
+    prompt: 'Name this session (leave blank for a timestamp).',
+    placeHolder: 'e.g. billing-bug — or leave empty for a timestamp',
+  });
+  if (input === undefined) return null; // cancelled
+  return input.trim() || timestampName();
+}
+
 async function pickTerminalMode() {
   const mode = cfg().get('defaultTerminalMode') || 'internal';
   if (mode !== 'ask') return mode;
@@ -59,11 +79,16 @@ async function pickTerminalMode() {
   return pick ? pick.value : null;
 }
 
-function runInInternalTerminal(name, cwd, cmd) {
-  const reuse = cfg().get('reuseTerminal');
+// Tab icon that distinguishes a new session from a resumed one (no text — the
+// project name comes from the cwd). resumeArg falsy = new, truthy = resume.
+function launchIcon(resumeArg) {
+  return new vscode.ThemeIcon(resumeArg ? 'history' : 'sparkle');
+}
+
+function runInInternalTerminal(name, cwd, cmd, icon) {
   let terminal;
-  if (reuse) terminal = vscode.window.terminals.find((t) => t.name === name);
-  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd });
+  if (cfg().get('reuseTerminal')) terminal = findReusableTerminal(cwd);
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd, iconPath: icon });
   terminal.show();
   terminal.sendText(cmd);
 }
@@ -386,7 +411,7 @@ function resolveSessionId(dir, resumeArg) {
   const id = crypto.randomUUID();
   return { id, runArg: ['--session-id', id] };
 }
-function launchClaudeTmux(fav, resumeArg, verb) {
+function launchClaudeTmux(fav, resumeArg) {
   const dir = fav.path;
   const c = cfg();
   const bin = c.get('claudeCommand') || 'claude';
@@ -417,14 +442,15 @@ function launchClaudeTmux(fav, resumeArg, verb) {
     writeAgentIndex(sessions);
     if (agentProvider) { try { agentProvider.refresh(); } catch {} }
   }
-  const name = `${verb} Claude · ${fav.label || path.basename(dir)}`;
-  let terminal = cfg().get('reuseTerminal') ? vscode.window.terminals.find((t) => t.name === name) : null;
-  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir });
+  // name = bare folder/label so VS Code drops the duplicate ${cwdFolder} description.
+  const name = fav.label || path.basename(dir);
+  let terminal = cfg().get('reuseTerminal') ? findReusableTerminal(dir) : null;
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir, iconPath: launchIcon(resumeArg) });
   terminal.show();
   terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
 }
 
-function launchClaudeDtach(fav, resumeArg, verb) {
+function launchClaudeDtach(fav, resumeArg) {
   const dir = fav.path;
   const c = cfg();
   const bin = c.get('claudeCommand') || 'claude';
@@ -446,29 +472,79 @@ function launchClaudeDtach(fav, resumeArg, verb) {
     fs.mkdirSync(sockDir, { recursive: true });
     socket = path.join(sockDir, id + '.sock');
   } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
-  const name = `${verb} Claude · ${fav.label || path.basename(dir)}`;
-  let terminal = cfg().get('reuseTerminal') ? vscode.window.terminals.find((t) => t.name === name) : null;
-  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir });
+  // name = bare folder/label so VS Code drops the duplicate ${cwdFolder} description.
+  const name = fav.label || path.basename(dir);
+  let terminal = cfg().get('reuseTerminal') ? findReusableTerminal(dir) : null;
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir, iconPath: launchIcon(resumeArg) });
   terminal.show();
-  // -A: attach if the session is already live (reconnect), else create it.
+  // Create the master detached (no controlling terminal), then attach a client.
+  // This keeps the claude process's lifetime fully independent of this code-server
+  // terminal — parity with the Asana bridge's `dtach -n` — instead of `dtach -A`,
+  // which parents the master under the interactive client. `dtach -n` is a harmless
+  // no-op (errors, swallowed) when the session is already live, so re-opening just
+  // re-attaches and the trailing `dtach -a` always fires a fresh -r winch redraw.
   // -E: no detach escape char; -z: pass Ctrl-Z through; -r winch: redraw on attach.
-  terminal.sendText(`dtach -A ${JSON.stringify(socket)} -E -z -r winch bash ${JSON.stringify(runner)}`);
+  const sock = JSON.stringify(socket);
+  terminal.sendText(`dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; dtach -a ${sock} -E -z -r winch`);
 }
 
-async function launchClaude(fav, resumeArg, verb) {
+// On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
+// its websocket) the dtach client stays attached the whole time, so no re-attach
+// fires and `-r winch` never re-triggers — the full-screen Claude TUI shows stale
+// output and looks frozen, even though the process is alive and well. Nudge every
+// dtach master (a `dtach` process with no controlling tty) with SIGWINCH; the program
+// repaints and dtach forwards the fresh frame to the reconnected client. SIGWINCH is
+// benign — sessions that don't need it simply repaint.
+function redrawDtachSessions() {
+  try {
+    cp.exec(`ps -e -o pid=,tty=,comm= | awk '$2=="?" && $3=="dtach"{print $1}' | xargs -r kill -WINCH`);
+  } catch { /* best-effort redraw nudge */ }
+}
+
+async function launchClaude(fav, resumeArg, opts = {}) {
+  // Every new-session launch asks for a name first (timestamp if left blank).
+  // Resumes keep the existing session, so they skip the prompt; newScratchSession
+  // already prompts for its folder name and passes skipNamePrompt to avoid asking twice.
+  if (resumeArg === false && !opts.skipNamePrompt) {
+    const name = await promptSessionName();
+    if (name === null) return; // cancelled
+    fav = { ...fav, label: name };
+  }
   const mode = await pickTerminalMode();
   if (!mode) return;
-  if (mode === 'internal' && useTmux()) { launchClaudeTmux(fav, resumeArg, verb); return; }
-  if (mode === 'internal' && useDtach()) { launchClaudeDtach(fav, resumeArg, verb); return; }
+  if (mode === 'internal' && useTmux()) { launchClaudeTmux(fav, resumeArg); return; }
+  if (mode === 'internal' && useDtach()) { launchClaudeDtach(fav, resumeArg); return; }
   const cmd = buildClaudeCommand(resumeArg);
-  const label = `${verb} Claude · ${fav.label || path.basename(fav.path)}`;
   if (mode === 'external') runInExternalTerminal(fav.path, cmd);
-  else runInInternalTerminal(label, fav.path, cmd);
+  else runInInternalTerminal(fav.label || path.basename(fav.path), fav.path, cmd, launchIcon(resumeArg));
 }
 
 async function startClaude(fav) {
   if (!fav || !(await checkFavExists(fav))) return;
-  await launchClaude(fav, false, 'Start');
+  await launchClaude(fav, false);
+}
+
+// Start a fresh, unscoped Claude session in a throwaway dir under scratchDir
+// (~/tasks by default). The folder can be renamed/moved later with the
+// refactor-workspace-paths skill once the work becomes permanent.
+async function newScratchSession() {
+  const label = await vscode.window.showInputBox({
+    title: 'New Claude Session',
+    prompt: 'Optional label (leave blank for a timestamp-only folder). You can rename it later.',
+    placeHolder: 'e.g. billing-bug — or leave empty',
+  });
+  if (label === undefined) return; // cancelled
+  const slug = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const name = slug || timestampName();
+  const base = expandHome(cfg().get('scratchDir') || '~/tasks');
+  const dir = path.join(base, name);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    vscode.window.showErrorMessage(`Claude Code Helper: could not create ${dir} — ${e.message}`);
+    return;
+  }
+  await launchClaude({ path: dir, label: name }, false, { skipNamePrompt: true });
 }
 
 function favFromUri(uri) {
@@ -497,10 +573,10 @@ async function resumeClaude(fav) {
       `No previous Claude sessions found for ${fav.label || path.basename(fav.path)}.`,
       'Start new session', 'Cancel'
     );
-    if (choice === 'Start new session') await launchClaude(fav, false, 'Start');
+    if (choice === 'Start new session') await launchClaude(fav, false);
     return;
   }
-  if (sessions.length === 1) { await launchClaude(fav, true, 'Resume'); return; }
+  if (sessions.length === 1) { await launchClaude(fav, true); return; }
   const buildItem = (s, labelOverride, sessionId) => {
     const m = readSessionMeta(s.file);
     const title = m.title || s.title || s.id;
@@ -527,7 +603,7 @@ async function resumeClaude(fav) {
     matchOnDescription: true, matchOnDetail: true,
   });
   if (!pick) return;
-  await launchClaude(fav, pick.sessionId === true ? true : pick.sessionId, 'Resume');
+  await launchClaude(fav, pick.sessionId === true ? true : pick.sessionId);
 }
 
 let favProvider;
@@ -616,6 +692,13 @@ function terminalDisplayName(terminal) {
   const cwd = getTerminalCwd(terminal);
   if (cwd) return path.basename(cwd.fsPath);
   return n || '—';
+}
+
+function findReusableTerminal(dir) {
+  return vscode.window.terminals.find((t) => {
+    const c = getTerminalCwd(t);
+    return c && c.fsPath === dir;
+  });
 }
 
 function getTerminalCwd(terminal) {
@@ -773,7 +856,7 @@ async function resumeSessionNode(node) {
     return;
   }
   const fav = { path: cwd, label: path.basename(cwd) };
-  await launchClaude(fav, s.id, 'Resume');
+  await launchClaude(fav, s.id);
 }
 
 // ─── agent sessions (Asana → Claude bridge) ───────────────────────────────────
@@ -895,7 +978,7 @@ async function resumeAgentSession(node) {
     vscode.window.showErrorMessage(`Project folder no longer exists: ${e.dir}`);
     return;
   }
-  await launchClaude({ path: e.dir, label: e.displayName }, e.sessionId, 'Resume');
+  await launchClaude({ path: e.dir, label: e.displayName }, e.sessionId);
 }
 
 let agentProvider;
@@ -970,6 +1053,7 @@ function activate(context) {
     for (const f of folders) await addFavouriteFromUri(context, f.uri, { askLabel: folders.length === 1 });
   });
   reg('claudeHelper.addFromExplorer', (uri) => addFavouriteFromUri(context, uri));
+  reg('claudeHelper.newSession', () => newScratchSession());
   reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
   reg('claudeHelper.startClaudeFromExplorer', (uri) => startClaudeFromUri(uri));
@@ -1131,6 +1215,9 @@ function activate(context) {
     vscode.window.onDidCloseTerminal(refreshTerms),
     vscode.window.onDidChangeActiveTerminal(refreshTerms),
     vscode.window.onDidChangeTerminalShellIntegration && vscode.window.onDidChangeTerminalShellIntegration(refreshTerms),
+    // Window regained focus (fires on browser/notebook reconnect): force live dtach
+    // sessions to repaint so a reconnected Claude TUI isn't left frozen on a stale frame.
+    vscode.window.onDidChangeWindowState((s) => { if (s.focused) redrawDtachSessions(); }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('claudeHelper')) { favProvider.refresh(); termProvider.refresh(); sessProvider.refresh(); agentProvider.refresh(); }
     })
