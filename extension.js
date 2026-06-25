@@ -54,13 +54,34 @@ function timestampName() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
-// Prompt for a session name on every new-session launch. Empty → timestamp.
+// Pre-fill the session-name prompt with something derived from the launch dir.
+// Sessions under ~/clients/<CODE>/… get a "CODE/folder" prefix so it's clear
+// which client they belong to (just "CODE" when launched at the client root);
+// everything else (projects, tasks, …) uses the bare folder name.
+function defaultSessionName(dir) {
+  if (!dir) return '';
+  const base = path.basename(dir);
+  const segs = dir.split(path.sep).filter(Boolean);
+  const ci = segs.indexOf('clients');
+  if (ci !== -1 && ci < segs.length - 1) {
+    const code = segs[ci + 1];
+    return base === code ? code : `${code}/${base}`;
+  }
+  return base;
+}
+
+// Prompt for a session name on every new-session launch. Pre-filled from the
+// launch dir (see defaultSessionName); empty → timestamp.
 // Returns the chosen name, or null if the user cancelled (Esc).
-async function promptSessionName() {
+async function promptSessionName(dir) {
+  const name = defaultSessionName(dir);
   const input = await vscode.window.showInputBox({
     title: 'Start Claude Session',
     prompt: 'Name this session (leave blank for a timestamp).',
     placeHolder: 'e.g. billing-bug — or leave empty for a timestamp',
+    value: name,
+    // Collapsed selection at the end → nothing highlighted, cursor behind the name.
+    valueSelection: [name.length, name.length],
   });
   if (input === undefined) return null; // cancelled
   return input.trim() || timestampName();
@@ -132,6 +153,12 @@ function listSessions(projectDir) {
       const full = path.join(dir, f);
       let mtime = 0;
       try { mtime = fs.statSync(full).mtimeMs; } catch {}
+      // Rank/label by the last real conversation event, falling back to fs mtime.
+      // Idle long-lived sessions get their transcript rewritten without new content,
+      // which bumps mtime and makes stale sessions masquerade as "active just now".
+      // The `mtime` field carries this corrected value so every downstream
+      // relativeTime() / sort uses last-activity instead of the filesystem time.
+      try { const ts = readSessionMeta(full).lastTs; if (ts) { const p = Date.parse(ts); if (p) mtime = p; } } catch {}
       return { id: f.slice(0, -'.jsonl'.length), file: full, mtime, title: null };
     })
     .sort((a, b) => b.mtime - a.mtime);
@@ -204,11 +231,16 @@ function _readSessionMetaUncached(file, size) {
     if (!summary && rec.type === 'summary' && typeof rec.summary === 'string') summary = rec.summary;
   }
 
-  let lastUser = null, lastAssistant = null;
+  let lastUser = null, lastAssistant = null, lastTs = null;
   const tailLines = parseLines(tailText, size > HEAD);
   for (const line of tailLines) {
     if (!line) continue;
     let rec; try { rec = JSON.parse(line); } catch { continue; }
+    // Track the newest real conversation event time. fs mtime is unreliable for
+    // "last activity": a long-lived idle session keeps getting its transcript
+    // rewritten (checkpoint flush — same content), which bumps mtime to "now"
+    // even though nothing happened. The event timestamp doesn't lie.
+    if (typeof rec.timestamp === 'string') lastTs = rec.timestamp;
     if (rec.type === 'summary' && typeof rec.summary === 'string') summary = rec.summary;
     if (rec.type === 'user' && rec.message) {
       const t = extractText(rec.message.content);
@@ -228,11 +260,12 @@ function _readSessionMetaUncached(file, size) {
     firstUserMsg: firstUserMsg ? firstUserMsg.replace(/\s+/g, ' ').trim() : null,
     lastUser: lastUser ? lastUser.replace(/\s+/g, ' ').trim() : null,
     lastAssistant: lastAssistant ? lastAssistant.replace(/\s+/g, ' ').trim() : null,
+    lastTs,
   };
 }
 
 function emptyMeta() {
-  return { title: null, cwd: null, summary: null, firstUserMsg: null, lastUser: null, lastAssistant: null };
+  return { title: null, cwd: null, summary: null, firstUserMsg: null, lastUser: null, lastAssistant: null, lastTs: null };
 }
 
 function readSessionTitle(file) {
@@ -391,6 +424,31 @@ function useTmux() { return cfg().get('useTmux') !== false; }
 function useDtach() { return cfg().get('useDtach') !== false; }
 function dtachSocketDir() { return expandHome(cfg().get('dtachSocketDir') || '~/.claude/dtach'); }
 
+// Session masters (the tmux server / dtach master that actually hold Claude) are
+// launched into a dedicated user-manager cgroup slice (claude.slice) rather than
+// inheriting code-server's own cgroup. That way a runaway session's memory hits
+// claude.slice's limit instead of code-server@work.service's — so it can't OOM
+// the editor and disconnect the user (which is exactly what happened 2026-06-23).
+// Reaching the user manager from a code-server (system-service) context needs
+// XDG_RUNTIME_DIR / DBUS_SESSION_BUS_ADDRESS, which those terminals lack — so we
+// inject them. Falls back to a direct, unwrapped launch when the user systemd
+// manager isn't reachable (no /run/user/<uid>/bus), e.g. non-systemd hosts.
+function userBusReachable() {
+  try { return process.getuid && fs.existsSync(`/run/user/${process.getuid()}/bus`); }
+  catch { return false; }
+}
+function sessionSliceEnv() {
+  const uid = process.getuid();
+  return { ...process.env, XDG_RUNTIME_DIR: `/run/user/${uid}`, DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus` };
+}
+// Shell-string prefix to run a command inside claude.slice (for terminal.sendText).
+function sliceWrapShell() {
+  if (!userBusReachable()) return '';
+  const uid = process.getuid();
+  return `XDG_RUNTIME_DIR=/run/user/${uid} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus ` +
+    'systemd-run --user --scope --slice=claude.slice --quiet ';
+}
+
 function tmuxHasSession(name) {
   try { return cp.spawnSync('tmux', ['-L', agentSocket(), 'has-session', '-t', name]).status === 0; }
   catch { return false; }
@@ -431,8 +489,15 @@ function launchClaudeTmux(fav, resumeArg) {
         `#!/usr/bin/env bash\ncd ${JSON.stringify(dir)}\n${cmd}\necho\necho "[claude session ended — resume with: ${bin} --resume ${id} --dangerously-skip-permissions]"\nexec bash\n`,
         { mode: 0o755 });
     } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
+    // Start the (shared) tmux server inside claude.slice so the session it holds
+    // lives outside code-server's cgroup. Only the first session starts the server;
+    // later new-sessions just reach the existing one, so its slice is set once.
+    const tmuxArgs = ['-L', agentSocket(), 'new-session', '-d', '-s', tmuxName, '-c', dir, `bash ${runner}`];
     try {
-      cp.execFileSync('tmux', ['-L', agentSocket(), 'new-session', '-d', '-s', tmuxName, '-c', dir, `bash ${runner}`]);
+      if (userBusReachable())
+        cp.execFileSync('systemd-run', ['--user', '--scope', '--slice=claude.slice', '--quiet', 'tmux', ...tmuxArgs], { env: sessionSliceEnv() });
+      else
+        cp.execFileSync('tmux', tmuxArgs);
     } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: tmux launch failed — ${e.message}`); return; }
     cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', '0']);
     cp.spawnSync('tmux', ['-L', agentSocket(), 'set-option', '-g', 'mouse', 'off']);
@@ -484,8 +549,11 @@ function launchClaudeDtach(fav, resumeArg) {
   // no-op (errors, swallowed) when the session is already live, so re-opening just
   // re-attaches and the trailing `dtach -a` always fires a fresh -r winch redraw.
   // -E: no detach escape char; -z: pass Ctrl-Z through; -r winch: redraw on attach.
+  // Only the `dtach -n` master (which holds Claude) goes into claude.slice; the
+  // trailing `dtach -a` attach client is a thin, short-lived terminal-side client
+  // and is left in place. sliceWrapShell() is '' when the user manager is absent.
   const sock = JSON.stringify(socket);
-  terminal.sendText(`dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; dtach -a ${sock} -E -z -r winch`);
+  terminal.sendText(`${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; dtach -a ${sock} -E -z -r winch`);
 }
 
 // On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
@@ -506,7 +574,7 @@ async function launchClaude(fav, resumeArg, opts = {}) {
   // Resumes keep the existing session, so they skip the prompt; newScratchSession
   // already prompts for its folder name and passes skipNamePrompt to avoid asking twice.
   if (resumeArg === false && !opts.skipNamePrompt) {
-    const name = await promptSessionName();
+    const name = await promptSessionName(fav && fav.path);
     if (name === null) return; // cancelled
     fav = { ...fav, label: name };
   }
@@ -761,8 +829,18 @@ function scanRecentSessions() {
       const full = path.join(dir, f);
       let st;
       try { st = fs.statSync(full); } catch { continue; }
+      // Cheap pre-filter: real activity is always ≤ fs mtime, so an mtime below the
+      // cutoff guarantees the session is too old to show — skip without parsing.
       if (st.size === 0 || st.mtimeMs < cutoff) continue;
-      out.push({ id: f.slice(0, -'.jsonl'.length), file: full, mtime: st.mtimeMs, projectFolder: proj });
+      // Then rank/bucket by the last real conversation event, not fs mtime. Idle
+      // long-lived sessions get their transcript rewritten (checkpoint flush, same
+      // content) which bumps mtime to "now", wrongly bubbling days-old sessions into
+      // the "Last hour" group. The event timestamp reflects actual activity.
+      let activity = st.mtimeMs;
+      const ts = readSessionMeta(full).lastTs;
+      if (ts) { const p = Date.parse(ts); if (p) activity = p; }
+      if (activity < cutoff) continue;
+      out.push({ id: f.slice(0, -'.jsonl'.length), file: full, mtime: activity, projectFolder: proj });
     }
   }
   out.sort((a, b) => b.mtime - a.mtime);
@@ -934,15 +1012,22 @@ class AgentSessionsProvider {
     const item = new vscode.TreeItem(e.displayName || path.basename(e.dir), vscode.TreeItemCollapsibleState.None);
     // Match the other views: name as label, directory as the dimmed description.
     // Live/ended status is conveyed by the icon colour (and the tooltip).
-    item.description = shortHome(e.dir);
+    // Asana-spawned sessions (from the asana-claude bridge) carry source:'asana'
+    // (older entries: a taskGid). Brand them with the Asana logo so they're
+    // identifiable at a glance; keep live/ended via a status glyph in the
+    // description since a custom SVG icon can't take a ThemeColor.
+    const isAsana = e.source === 'asana' || !!e.taskGid;
+    item.description = isAsana ? `${live ? '🟢' : '⚫'} ${shortHome(e.dir)}` : shortHome(e.dir);
     let meta = null;
     try { meta = readSessionMeta(agentSessionFile(e)); } catch {}
     item.tooltip = buildAgentTooltip(e, live, meta);
     item.contextValue = live ? 'agentSessionLive' : 'agentSessionEnded';
-    item.iconPath = new vscode.ThemeIcon(
-      live ? 'vm-running' : 'vm-outline',
-      new vscode.ThemeColor(live ? 'terminal.ansiGreen' : 'disabledForeground')
-    );
+    item.iconPath = isAsana
+      ? vscode.Uri.file(path.join(__dirname, 'resources', 'asana.svg'))
+      : new vscode.ThemeIcon(
+          live ? 'vm-running' : 'vm-outline',
+          new vscode.ThemeColor(live ? 'terminal.ansiGreen' : 'disabledForeground')
+        );
     item.command = live
       ? { command: 'claudeHelper.attachAgentSession', title: 'Attach Session', arguments: [node] }
       : { command: 'claudeHelper.resumeAgentSession', title: 'Resume Session', arguments: [node] };
