@@ -75,13 +75,14 @@ function defaultSessionName(dir) {
 // Returns the chosen name, or null if the user cancelled (Esc).
 async function promptSessionName(dir) {
   const name = defaultSessionName(dir);
+  const value = name + ' ';
   const input = await vscode.window.showInputBox({
     title: 'Start Claude Session',
     prompt: 'Name this session (leave blank for a timestamp).',
     placeHolder: 'e.g. billing-bug — or leave empty for a timestamp',
-    value: name,
-    // Collapsed selection at the end → nothing highlighted, cursor behind the name.
-    valueSelection: [name.length, name.length],
+    value,
+    // Collapsed selection at the end → nothing highlighted, cursor behind the space.
+    valueSelection: [value.length, value.length],
   });
   if (input === undefined) return null; // cancelled
   return input.trim() || timestampName();
