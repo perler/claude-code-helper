@@ -879,11 +879,34 @@ class SessionsProvider {
     this._em = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._em.event;
     this._cache = null;
+    this._filter = '';
+    this.view = null; // set after createTreeView so we can show the match count
+  }
+  get filter() { return this._filter; }
+  setFilter(q) {
+    const next = (q || '').trim();
+    if (next === this._filter) return;
+    this._filter = next;
+    vscode.commands.executeCommand('setContext', 'claudeHelper.sessionsFiltered', !!next);
+    this.refresh();
   }
   refresh() { this._cache = null; this._em.fire(); }
+  _matches(s, q) {
+    const meta = readSessionMeta(s.file);
+    const hay = [s.title, meta.title, meta.summary, meta.firstUserMsg, s.id]
+      .filter(Boolean).join('\n').toLowerCase();
+    return hay.includes(q);
+  }
   _load() {
     if (!this._cache) {
-      const sessions = scanRecentSessions();
+      const all = scanRecentSessions();
+      const q = this._filter.toLowerCase();
+      const sessions = q ? all.filter((s) => this._matches(s, q)) : all;
+      if (this.view) {
+        this.view.message = q
+          ? `Filter “${this._filter}” — ${sessions.length} of ${all.length} session${all.length === 1 ? '' : 's'}`
+          : undefined;
+      }
       const groups = new Map();
       for (const s of sessions) {
         const b = bucketFor(s.mtime);
@@ -1112,6 +1135,7 @@ function activate(context) {
   const sessView = vscode.window.createTreeView('claudeHelper.sessions', {
     treeDataProvider: sessProvider, showCollapseAll: true,
   });
+  sessProvider.view = sessView;
   context.subscriptions.push(sessView);
 
   agentProvider = new AgentSessionsProvider();
@@ -1234,6 +1258,17 @@ function activate(context) {
   });
   // session commands
   reg('claudeHelper.refreshSessions', () => sessProvider.refresh());
+  reg('claudeHelper.searchSessions', () => {
+    const box = vscode.window.createInputBox();
+    box.title = 'Search Recent Sessions';
+    box.placeholder = 'Filter by session name or summary…';
+    box.value = sessProvider.filter;
+    box.onDidChangeValue((v) => sessProvider.setFilter(v));
+    box.onDidAccept(() => box.hide());
+    box.onDidHide(() => box.dispose());
+    box.show();
+  });
+  reg('claudeHelper.clearSessionSearch', () => sessProvider.setFilter(''));
   reg('claudeHelper.resumeSession', (node) => resumeSessionNode(node));
   reg('claudeHelper.openSessionFolder', (node) => {
     if (!node || node.kind !== 'session') return;
