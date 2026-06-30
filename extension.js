@@ -425,6 +425,37 @@ function useTmux() { return cfg().get('useTmux') !== false; }
 function useDtach() { return cfg().get('useDtach') !== false; }
 function dtachSocketDir() { return expandHome(cfg().get('dtachSocketDir') || '~/.claude/dtach'); }
 
+// dtdrain — the lossy-drain relay piped after `dtach -a`. code-server's pty host
+// pauses the pty after 100 000 unacknowledged bytes (terminal flow control); on a
+// half-open/silently-dropped websocket the browser stops acking, the pty pauses,
+// the full pty blocks `dtach -a`'s stdout, which blocks the dtach master in
+// select(), which blocks Claude's stdout and trips its ~120 s stall watchdog
+// ("Response stalled mid-stream"). dtdrain writes to the terminal non-blocking and
+// drops on a wedged pty, so the master is always drained and Claude keeps running.
+// Built once from the shipped dtdrain.c into the socket dir; null (-> plain attach,
+// the pre-relay behaviour) if no C compiler is available or the build fails.
+let _dtdrainBin; // undefined = not yet tried, null = unavailable, string = path
+function dtdrainBin() {
+  if (_dtdrainBin !== undefined) return _dtdrainBin;
+  _dtdrainBin = null;
+  try {
+    const src = path.join(__dirname, 'dtdrain.c');
+    if (!fs.existsSync(src)) return _dtdrainBin;
+    const outDir = dtachSocketDir();
+    fs.mkdirSync(outDir, { recursive: true });
+    const bin = path.join(outDir, 'dtdrain');
+    const fresh = fs.existsSync(bin) && fs.statSync(bin).mtimeMs >= fs.statSync(src).mtimeMs;
+    if (!fresh) {
+      const cc = ['cc', 'gcc', 'clang'].find((c) => { try { return cp.spawnSync(c, ['--version']).status === 0; } catch { return false; } });
+      if (!cc) return _dtdrainBin;
+      const r = cp.spawnSync(cc, ['-O2', '-o', bin, src]);
+      if (r.status !== 0 || !fs.existsSync(bin)) return _dtdrainBin;
+    }
+    _dtdrainBin = bin;
+  } catch { _dtdrainBin = null; }
+  return _dtdrainBin;
+}
+
 // Session masters (the tmux server / dtach master that actually hold Claude) are
 // launched into a dedicated user-manager cgroup slice (claude.slice) rather than
 // inheriting code-server's own cgroup. That way a runaway session's memory hits
@@ -553,8 +584,13 @@ function launchClaudeDtach(fav, resumeArg) {
   // Only the `dtach -n` master (which holds Claude) goes into claude.slice; the
   // trailing `dtach -a` attach client is a thin, short-lived terminal-side client
   // and is left in place. sliceWrapShell() is '' when the user manager is absent.
+  // The attach client is piped through dtdrain (when available) so a flow-control
+  // -paused terminal can't back-pressure the master and stall Claude — see
+  // dtdrainBin(). dtach does its tty work on stdin, so piping stdout is safe.
   const sock = JSON.stringify(socket);
-  terminal.sendText(`${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; dtach -a ${sock} -E -z -r winch`);
+  const relay = dtdrainBin();
+  const attach = `dtach -a ${sock} -E -z -r winch` + (relay ? ` | ${JSON.stringify(relay)}` : '');
+  terminal.sendText(`${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
 }
 
 // On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
