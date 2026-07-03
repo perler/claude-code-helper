@@ -600,10 +600,22 @@ function launchClaudeDtach(fav, resumeArg) {
 // dtach master (a `dtach` process with no controlling tty) with SIGWINCH; the program
 // repaints and dtach forwards the fresh frame to the reconnected client. SIGWINCH is
 // benign — sessions that don't need it simply repaint.
+//
+// Two winches, spaced out. dtdrain drops the oldest bytes when its ring fills on a
+// paused terminal (dtdrain.c), which can tear the escape-sequence stream mid-frame:
+// lost cursor-move/clear sequences leave a stale frame (e.g. Claude's own welcome/
+// fleet screen) overlaid on the live one, and a single differential winch-repaint
+// won't rewrite the cells it thinks are already correct. The first winch fires now;
+// the second fires after the drain ring has had time to flush, so the repaint lands
+// on a settled grid and clears the overlay instead of interleaving with it.
 function redrawDtachSessions() {
-  try {
-    cp.exec(`ps -e -o pid=,tty=,comm= | awk '$2=="?" && $3=="dtach"{print $1}' | xargs -r kill -WINCH`);
-  } catch { /* best-effort redraw nudge */ }
+  const nudge = () => {
+    try {
+      cp.exec(`ps -e -o pid=,tty=,comm= | awk '$2=="?" && $3=="dtach"{print $1}' | xargs -r kill -WINCH`);
+    } catch { /* best-effort redraw nudge */ }
+  };
+  nudge();
+  setTimeout(nudge, 250);
 }
 
 async function launchClaude(fav, resumeArg, opts = {}) {
