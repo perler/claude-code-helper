@@ -2,7 +2,7 @@
 	"name": "claude-code-helper",
 	"displayName": "Claude Code Helper",
 	"description": "Favourite directories + open terminal list for Claude Code workflows",
-	"version": "0.7.1",
+	"version": "0.7.2",
 	"publisher": "pat-erler",
 	"engines": {
 		"vscode": "^1.80.0"

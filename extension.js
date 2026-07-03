@@ -590,7 +590,11 @@ function launchClaudeDtach(fav, resumeArg) {
   const sock = JSON.stringify(socket);
   const relay = dtdrainBin();
   const attach = `dtach -a ${sock} -E -z -r winch` + (relay ? ` | ${JSON.stringify(relay)}` : '');
-  terminal.sendText(`${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
+  // Leading space keeps this internal launch line out of ~/.bash_history: bash's
+  // ignorespace (set via HISTCONTROL=ignoreboth in the default .bashrc the interactive
+  // terminal sources) drops space-prefixed commands from the history list. It's our
+  // plumbing, not something the user typed, so it shouldn't clutter their history.
+  terminal.sendText(` ${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
 }
 
 // On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
