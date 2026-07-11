@@ -2,7 +2,7 @@
 	"name": "claude-code-helper",
 	"displayName": "Claude Code Helper",
 	"description": "Favourite directories + open terminal list for Claude Code workflows",
-	"version": "0.7.2",
+	"version": "0.8.0",
 	"publisher": "pat-erler",
 	"engines": {
 		"vscode": "^1.80.0"
@@ -41,6 +41,10 @@
 				{
 					"id": "claudeHelper.sessions",
 					"name": "Recent Sessions"
+				},
+				{
+					"id": "claudeHelper.bookmarks",
+					"name": "Bookmarks"
 				}
 			]
 		},
@@ -56,6 +60,10 @@
 			{
 				"view": "claudeHelper.agentSessions",
 				"contents": "No agent sessions yet.\nTag an Asana task `claude` to spawn one."
+			},
+			{
+				"view": "claudeHelper.bookmarks",
+				"contents": "No bookmarks yet.\n[Add Bookmark](command:claudeHelper.addBookmark)"
 			}
 		],
 		"commands": [
@@ -260,6 +268,42 @@
 				"command": "claudeHelper.removeAgentSession",
 				"title": "Remove from List",
 				"icon": "$(close)"
+			},
+			{
+				"command": "claudeHelper.addBookmark",
+				"title": "Add Bookmark…",
+				"icon": "$(add)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.editBookmark",
+				"title": "Edit Bookmark…",
+				"icon": "$(edit)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.removeBookmark",
+				"title": "Remove Bookmark",
+				"icon": "$(trash)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.refreshBookmarks",
+				"title": "Refresh",
+				"icon": "$(refresh)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.openBookmark",
+				"title": "Open Bookmark in Browser",
+				"icon": "$(link-external)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.openBookmarksFile",
+				"title": "Edit Bookmarks File",
+				"icon": "$(json)",
+				"category": "Claude Code Helper"
 			}
 		],
 		"menus": {
@@ -313,6 +357,21 @@
 					"command": "claudeHelper.refreshAgentSessions",
 					"when": "view == claudeHelper.agentSessions",
 					"group": "navigation@1"
+				},
+				{
+					"command": "claudeHelper.addBookmark",
+					"when": "view == claudeHelper.bookmarks",
+					"group": "navigation@1"
+				},
+				{
+					"command": "claudeHelper.refreshBookmarks",
+					"when": "view == claudeHelper.bookmarks",
+					"group": "navigation@2"
+				},
+				{
+					"command": "claudeHelper.openBookmarksFile",
+					"when": "view == claudeHelper.bookmarks",
+					"group": "1_ops@1"
 				}
 			],
 			"view/item/context": [
@@ -500,6 +559,26 @@
 					"command": "claudeHelper.removeAgentSession",
 					"when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
 					"group": "9_destroy@1"
+				},
+				{
+					"command": "claudeHelper.editBookmark",
+					"when": "view == claudeHelper.bookmarks && viewItem == bookmark",
+					"group": "inline@1"
+				},
+				{
+					"command": "claudeHelper.removeBookmark",
+					"when": "view == claudeHelper.bookmarks && viewItem == bookmark",
+					"group": "inline@2"
+				},
+				{
+					"command": "claudeHelper.editBookmark",
+					"when": "view == claudeHelper.bookmarks && viewItem == bookmark",
+					"group": "3_edit@1"
+				},
+				{
+					"command": "claudeHelper.removeBookmark",
+					"when": "view == claudeHelper.bookmarks && viewItem == bookmark",
+					"group": "3_edit@9"
 				}
 			],
 			"explorer/context": [
@@ -629,6 +708,11 @@
 					"type": "string",
 					"default": "~/tasks",
 					"description": "Base directory for the New Claude Session button. Each session gets a timestamped subfolder here; rename/move it later once the work is permanent."
+				},
+				"claudeHelper.bookmarksFile": {
+					"type": "string",
+					"default": "",
+					"description": "Path to the bookmarks JSON file. Empty = ~/.config/cc-bookmarks.json"
 				}
 			}
 		}

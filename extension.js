@@ -1151,6 +1151,128 @@ function removeAgentEntry(node) {
   agentProvider.refresh();
 }
 
+// ─── bookmarks ───────────────────────────────────────────────────────────────
+
+function bookmarksFile() {
+  const configured = (cfg().get('bookmarksFile') || '').trim();
+  if (configured) return expandHome(configured);
+  return path.join(os.homedir(), '.config', 'cc-bookmarks.json');
+}
+
+function readBookmarks() {
+  const file = bookmarksFile();
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (e) {
+    if (fs.existsSync(file)) console.error(`Claude Code Helper: failed to read ${file} — ${e.message}`);
+    return [];
+  }
+  return Array.isArray(data.bookmarks) ? data.bookmarks : [];
+}
+
+function writeBookmarks(bookmarks) {
+  const file = bookmarksFile();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+  } catch (e) {
+    vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`);
+    return;
+  }
+  fs.writeFileSync(file, JSON.stringify({ bookmarks }, null, 2));
+}
+
+function ensureBookmarksFile() {
+  const file = bookmarksFile();
+  if (!fs.existsSync(file)) writeBookmarks([]);
+  return file;
+}
+
+class BookmarksProvider {
+  constructor() {
+    this._em = new vscode.EventEmitter();
+    this.onDidChangeTreeData = this._em.event;
+  }
+  refresh() { this._em.fire(); }
+  getTreeItem(bm) {
+    const item = new vscode.TreeItem(bm.label, vscode.TreeItemCollapsibleState.None);
+    item.tooltip = bm.url;
+    item.description = bm.url;
+    item.iconPath = new vscode.ThemeIcon(bm.icon || 'globe');
+    item.contextValue = 'bookmark';
+    item.command = { command: 'claudeHelper.openBookmark', title: 'Open', arguments: [bm] };
+    return item;
+  }
+  getChildren() { return readBookmarks(); }
+}
+
+let bookmarksProvider;
+
+async function openBookmark(bm) {
+  if (!bm || !bm.url) {
+    vscode.window.showErrorMessage('No bookmark URL.');
+    return;
+  }
+  await vscode.commands.executeCommand('simpleBrowser.show', bm.url);
+}
+
+async function addBookmark() {
+  const url = await vscode.window.showInputBox({
+    title: 'Add Bookmark',
+    prompt: 'Bookmark URL',
+    placeHolder: 'https://example.com',
+    validateInput: (v) => (/^https?:\/\//i.test(v.trim()) ? undefined : 'URL must start with http:// or https://'),
+  });
+  if (url === undefined) return;
+  let defaultLabel = url.trim();
+  try { defaultLabel = new URL(url.trim()).hostname; } catch {}
+  const label = await vscode.window.showInputBox({
+    title: 'Add Bookmark',
+    prompt: 'Label',
+    value: defaultLabel,
+  });
+  if (label === undefined) return;
+  const bookmarks = readBookmarks();
+  bookmarks.push({ label: label.trim() || defaultLabel, url: url.trim() });
+  writeBookmarks(bookmarks);
+  bookmarksProvider.refresh();
+  vscode.window.showInformationMessage(`Bookmark "${label.trim() || defaultLabel}" added.`);
+}
+
+async function editBookmark(bm) {
+  if (!bm) return;
+  const label = await vscode.window.showInputBox({
+    title: 'Edit Bookmark',
+    prompt: 'Label',
+    value: bm.label,
+  });
+  if (label === undefined) return;
+  const url = await vscode.window.showInputBox({
+    title: 'Edit Bookmark',
+    prompt: 'Bookmark URL',
+    value: bm.url,
+    validateInput: (v) => (/^https?:\/\//i.test(v.trim()) ? undefined : 'URL must start with http:// or https://'),
+  });
+  if (url === undefined) return;
+  const bookmarks = readBookmarks();
+  const idx = bookmarks.findIndex((b) => b.label === bm.label && b.url === bm.url);
+  if (idx === -1) return;
+  bookmarks[idx] = { ...bookmarks[idx], label: label.trim() || bm.label, url: url.trim() };
+  writeBookmarks(bookmarks);
+  bookmarksProvider.refresh();
+}
+
+async function removeBookmark(bm) {
+  if (!bm) return;
+  const c = await vscode.window.showWarningMessage(
+    `Remove bookmark "${bm.label}"?`, { modal: true }, 'Remove'
+  );
+  if (c !== 'Remove') return;
+  const bookmarks = readBookmarks().filter((b) => !(b.label === bm.label && b.url === bm.url));
+  writeBookmarks(bookmarks);
+  bookmarksProvider.refresh();
+}
+
 // ─── activation ──────────────────────────────────────────────────────────────
 
 async function applyFastHoverOnce(context) {
@@ -1195,6 +1317,12 @@ function activate(context) {
     treeDataProvider: agentProvider, showCollapseAll: false,
   });
   context.subscriptions.push(agentView);
+
+  bookmarksProvider = new BookmarksProvider();
+  const bookmarksView = vscode.window.createTreeView('claudeHelper.bookmarks', {
+    treeDataProvider: bookmarksProvider, showCollapseAll: false,
+  });
+  context.subscriptions.push(bookmarksView);
 
   const reg = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
 
@@ -1374,6 +1502,17 @@ function activate(context) {
   });
   reg('claudeHelper.removeAgentSession', (node) => removeAgentEntry(node));
 
+  // bookmarks commands
+  reg('claudeHelper.refreshBookmarks', () => bookmarksProvider.refresh());
+  reg('claudeHelper.addBookmark', () => addBookmark());
+  reg('claudeHelper.editBookmark', (bm) => editBookmark(bm));
+  reg('claudeHelper.removeBookmark', (bm) => removeBookmark(bm));
+  reg('claudeHelper.openBookmark', (bm) => openBookmark(bm));
+  reg('claudeHelper.openBookmarksFile', async () => {
+    const file = ensureBookmarksFile();
+    await vscode.window.showTextDocument(vscode.Uri.file(file));
+  });
+
   reg('claudeHelper.revealActiveTerminalCwd', () => {
     const t = vscode.window.activeTerminal;
     if (!t) { vscode.window.showInformationMessage('No active terminal.'); return; }
@@ -1392,7 +1531,7 @@ function activate(context) {
     // sessions to repaint so a reconnected Claude TUI isn't left frozen on a stale frame.
     vscode.window.onDidChangeWindowState((s) => { if (s.focused) redrawDtachSessions(); }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('claudeHelper')) { favProvider.refresh(); termProvider.refresh(); sessProvider.refresh(); agentProvider.refresh(); }
+      if (e.affectsConfiguration('claudeHelper')) { favProvider.refresh(); termProvider.refresh(); sessProvider.refresh(); agentProvider.refresh(); bookmarksProvider.refresh(); }
     })
   );
 
