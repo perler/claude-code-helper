@@ -1208,11 +1208,89 @@ class BookmarksProvider {
 
 let bookmarksProvider;
 
+// Fetch a URL server-side (extension host is Node), following redirects and
+// carrying cookies across them (so token-auth pages like /auto?k=… that 302 to /
+// keep their session cookie). Returns { body, finalUrl }.
+function httpGetText(rawUrl, { redirects = 5, cookies = '' } = {}) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(rawUrl); } catch (e) { return reject(e); }
+    const mod = u.protocol === 'http:' ? require('http') : require('https');
+    const req = mod.request(u, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'claude-code-helper',
+        Accept: 'text/html,application/xhtml+xml,*/*',
+        ...(cookies ? { Cookie: cookies } : {}),
+      },
+    }, (res) => {
+      const setCookie = (res.headers['set-cookie'] || []).map((c) => c.split(';')[0]).join('; ');
+      const merged = [cookies, setCookie].filter(Boolean).join('; ');
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects > 0) {
+        res.resume();
+        const next = new URL(res.headers.location, u).toString();
+        return resolve(httpGetText(next, { redirects: redirects - 1, cookies: merged }));
+      }
+      if (res.statusCode >= 400) { res.resume(); return reject(new Error(`HTTP ${res.statusCode}`)); }
+      const chunks = [];
+      res.on('data', (d) => chunks.push(d));
+      res.on('end', () => resolve({ body: Buffer.concat(chunks).toString('utf8'), finalUrl: u.toString() }));
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => req.destroy(new Error('timeout')));
+    req.end();
+  });
+}
+
+// Inject a <base> (so any relative refs resolve to the real origin) and a CSP that
+// permits the panel's own inline <style>/<script> plus https resources + XHRs.
+function prepBookmarkHtml(html, pageUrl) {
+  const origin = new URL(pageUrl).origin;
+  const base = `<base href="${origin}/">`;
+  const csp = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri ${origin}; img-src https: data: blob:; media-src https: data:; style-src 'unsafe-inline' https:; font-src https: data:; script-src 'unsafe-inline' https:; connect-src https:;">`;
+  if (/<head[^>]*>/i.test(html)) return html.replace(/<head[^>]*>/i, (m) => `${m}\n${base}\n${csp}`);
+  return `${base}\n${csp}\n${html}`;
+}
+
+// Panels opened via the native-webview path, keyed by URL so a re-click reveals
+// the existing tab instead of spawning duplicates.
+const bookmarkPanels = new Map();
+
+async function openBookmarkWebview(bm) {
+  const existing = bookmarkPanels.get(bm.url);
+  if (existing) { existing.reveal(); return; }
+  let fetched;
+  try {
+    fetched = await httpGetText(bm.url);
+  } catch (e) {
+    vscode.window.showWarningMessage(`Bookmark "${bm.label}": can't render in-editor (${e.message}); opening in Simple Browser.`);
+    await vscode.commands.executeCommand('simpleBrowser.show', bm.url);
+    return;
+  }
+  const panel = vscode.window.createWebviewPanel(
+    'claudeHelperBookmark', bm.label || 'Bookmark', vscode.ViewColumn.Active,
+    { enableScripts: true, retainContextWhenHidden: true }
+  );
+  panel.webview.html = prepBookmarkHtml(fetched.body, fetched.finalUrl);
+  bookmarkPanels.set(bm.url, panel);
+  panel.onDidDispose(() => { if (bookmarkPanels.get(bm.url) === panel) bookmarkPanels.delete(bm.url); });
+}
+
+// render mode per bookmark (cc-bookmarks.json "render" field):
+//   "webview" — rendered as a real VS Code webview tab (Cmd+W closes the tab, not
+//               the PWA). Best for self-contained panels served with a token.
+//   "browser" — opened as a normal external browser tab (openExternal).
+//   "simple"  — VS Code Simple Browser (default; handles arbitrary sites). Note its
+//               content is a cross-origin iframe, so Cmd+W with focus inside it is
+//               swallowed by the browser and can close the whole PWA window.
 async function openBookmark(bm) {
   if (!bm || !bm.url) {
     vscode.window.showErrorMessage('No bookmark URL.');
     return;
   }
+  const mode = bm.render || 'simple';
+  if (mode === 'webview') return openBookmarkWebview(bm);
+  if (mode === 'browser') return vscode.env.openExternal(vscode.Uri.parse(bm.url));
   await vscode.commands.executeCommand('simpleBrowser.show', bm.url);
 }
 
