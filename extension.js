@@ -912,6 +912,24 @@ function scanRecentSessions() {
   return out.slice(0, maxItems);
 }
 
+// Two same-titled sessions living in different folders are indistinguishable in
+// the tree, so a stale one can be retired: "Hide Session" drops the row but
+// leaves the transcript on disk (still resumable from the CLI, and restorable
+// here via "Show Hidden Sessions"). "Delete Session" is the destructive sibling
+// — it unlinks the .jsonl and the session is gone for good. Session ids are
+// uuids, so a flat id list is enough to key the hidden set.
+const HIDDEN_KEY = 'claudeHelper.hiddenSessions';
+let extCtx = null;
+
+function hiddenSessions() {
+  return new Set(extCtx ? extCtx.globalState.get(HIDDEN_KEY, []) : []);
+}
+
+async function setHiddenSessions(set) {
+  await extCtx.globalState.update(HIDDEN_KEY, [...set]);
+  vscode.commands.executeCommand('setContext', 'claudeHelper.hasHiddenSessions', set.size > 0);
+}
+
 function decodeProjectFolder(folder) {
   // best-effort: replace - with /, then verify existence
   const decoded = folder.replace(/-/g, '/');
@@ -963,7 +981,8 @@ class SessionsProvider {
   }
   _load() {
     if (!this._cache) {
-      const all = scanRecentSessions();
+      const hidden = hiddenSessions();
+      const all = scanRecentSessions().filter((s) => !hidden.has(s.id));
       const q = this._filter.toLowerCase();
       const sessions = q ? all.filter((s) => this._matches(s, q)) : all;
       if (this.view) {
@@ -1382,7 +1401,9 @@ async function applyFastHoverOnce(context) {
 }
 
 function activate(context) {
+  extCtx = context;
   applyFastHoverOnce(context);
+  vscode.commands.executeCommand('setContext', 'claudeHelper.hasHiddenSessions', hiddenSessions().size > 0);
   favProvider = new FavouritesProvider(context);
   const favView = vscode.window.createTreeView('claudeHelper.favourites', {
     treeDataProvider: favProvider, showCollapseAll: false,
@@ -1540,6 +1561,43 @@ function activate(context) {
   });
   reg('claudeHelper.clearSessionSearch', () => sessProvider.setFilter(''));
   reg('claudeHelper.resumeSession', (node) => resumeSessionNode(node));
+  reg('claudeHelper.hideSession', async (node) => {
+    if (!node || node.kind !== 'session') return;
+    const s = node.session;
+    const hidden = hiddenSessions();
+    hidden.add(s.id);
+    await setHiddenSessions(hidden);
+    sessProvider.refresh();
+    const pick = await vscode.window.showInformationMessage(`Hidden: ${s.title || s.id}`, 'Undo');
+    if (pick !== 'Undo') return;
+    const back = hiddenSessions();
+    back.delete(s.id);
+    await setHiddenSessions(back);
+    sessProvider.refresh();
+  });
+  reg('claudeHelper.showHiddenSessions', async () => {
+    const n = hiddenSessions().size;
+    if (!n) { vscode.window.showInformationMessage('No hidden sessions.'); return; }
+    await setHiddenSessions(new Set());
+    sessProvider.refresh();
+    vscode.window.showInformationMessage(`Restored ${n} hidden session${n === 1 ? '' : 's'}.`);
+  });
+  reg('claudeHelper.deleteSession', async (node) => {
+    if (!node || node.kind !== 'session') return;
+    const s = node.session;
+    const pick = await vscode.window.showWarningMessage(
+      `Delete session “${s.title || s.id}”?`,
+      { modal: true, detail: `Permanently removes ${s.file}\n\nThe session can never be resumed again.` },
+      'Delete',
+    );
+    if (pick !== 'Delete') return;
+    try { fs.unlinkSync(s.file); }
+    catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: delete failed — ${e.message}`); return; }
+    const hidden = hiddenSessions();
+    if (hidden.delete(s.id)) await setHiddenSessions(hidden);
+    sessProvider.refresh();
+    vscode.window.setStatusBarMessage(`Deleted session ${s.id}`, 3000);
+  });
   reg('claudeHelper.openSessionFolder', (node) => {
     if (!node || node.kind !== 'session') return;
     const cwd = getSessionCwd(node.session);

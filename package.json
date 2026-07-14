@@ -2,7 +2,7 @@
 	"name": "claude-code-helper",
 	"displayName": "Claude Code Helper",
 	"description": "Favourite directories + open terminal list for Claude Code workflows",
-	"version": "0.8.0",
+	"version": "0.9.0",
 	"publisher": "pat-erler",
 	"engines": {
 		"vscode": "^1.80.0"
@@ -231,6 +231,24 @@
 				"title": "Reveal Session File in Explorer"
 			},
 			{
+				"command": "claudeHelper.hideSession",
+				"title": "Hide Session",
+				"icon": "$(eye-closed)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.showHiddenSessions",
+				"title": "Show Hidden Sessions",
+				"icon": "$(eye)",
+				"category": "Claude Code Helper"
+			},
+			{
+				"command": "claudeHelper.deleteSession",
+				"title": "Delete Session…",
+				"icon": "$(trash)",
+				"category": "Claude Code Helper"
+			},
+			{
 				"command": "claudeHelper.refreshAgentSessions",
 				"title": "Refresh",
 				"icon": "$(refresh)"
@@ -349,9 +367,14 @@
 					"group": "navigation@1"
 				},
 				{
+					"command": "claudeHelper.showHiddenSessions",
+					"when": "view == claudeHelper.sessions && claudeHelper.hasHiddenSessions",
+					"group": "navigation@2"
+				},
+				{
 					"command": "claudeHelper.refreshSessions",
 					"when": "view == claudeHelper.sessions",
-					"group": "navigation@2"
+					"group": "navigation@3"
 				},
 				{
 					"command": "claudeHelper.refreshAgentSessions",
@@ -504,6 +527,16 @@
 					"command": "claudeHelper.copySessionPath",
 					"when": "view == claudeHelper.sessions && viewItem == session",
 					"group": "2_copy@2"
+				},
+				{
+					"command": "claudeHelper.hideSession",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "3_remove@1"
+				},
+				{
+					"command": "claudeHelper.deleteSession",
+					"when": "view == claudeHelper.sessions && viewItem == session",
+					"group": "3_remove@2"
 				},
 				{
 					"command": "claudeHelper.attachAgentSession",
