@@ -473,12 +473,24 @@ function sessionSliceEnv() {
   const uid = process.getuid();
   return { ...process.env, XDG_RUNTIME_DIR: `/run/user/${uid}`, DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus` };
 }
+// Per-scope bounds, so ONE session's runaway can't wedge the whole fleet.
+// claude.slice's own MemoryHigh only bounds the *aggregate*: on 2026-07-13 a single
+// ugrep (Claude's Grep tool) hit 11.4G scanning a .jsonl, pushed the slice past
+// MemoryHigh, and the kernel then throttled EVERY session in it into D-state via
+// mem_cgroup_handle_over_high — CPU idle, RAM fine, all sessions hung, and because
+// the balloon sat between MemoryHigh(14G) and MemoryMax(18G) it was throttled forever
+// and never OOM-killed. Capping each scope means the runaway dies in its own session.
+// OOMPolicy=continue is essential: the scope default is `stop`, which makes systemd
+// tear down the whole session when the kernel OOM-kills a child inside it — with
+// `continue`, the kernel reaps just the runaway (memory.oom.group=0) and Claude lives.
+// OOMPolicy can only be set at scope CREATION, not via `systemctl set-property`.
+const SCOPE_LIMITS = ['-p', 'MemoryMax=6G', '-p', 'MemorySwapMax=0', '-p', 'OOMPolicy=continue'];
 // Shell-string prefix to run a command inside claude.slice (for terminal.sendText).
 function sliceWrapShell() {
   if (!userBusReachable()) return '';
   const uid = process.getuid();
   return `XDG_RUNTIME_DIR=/run/user/${uid} DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/${uid}/bus ` +
-    'systemd-run --user --scope --slice=claude.slice --quiet ';
+    `systemd-run --user --scope --slice=claude.slice ${SCOPE_LIMITS.join(' ')} --quiet `;
 }
 
 function tmuxHasSession(name) {
@@ -527,7 +539,7 @@ function launchClaudeTmux(fav, resumeArg) {
     const tmuxArgs = ['-L', agentSocket(), 'new-session', '-d', '-s', tmuxName, '-c', dir, `bash ${runner}`];
     try {
       if (userBusReachable())
-        cp.execFileSync('systemd-run', ['--user', '--scope', '--slice=claude.slice', '--quiet', 'tmux', ...tmuxArgs], { env: sessionSliceEnv() });
+        cp.execFileSync('systemd-run', ['--user', '--scope', '--slice=claude.slice', ...SCOPE_LIMITS, '--quiet', 'tmux', ...tmuxArgs], { env: sessionSliceEnv() });
       else
         cp.execFileSync('tmux', tmuxArgs);
     } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: tmux launch failed — ${e.message}`); return; }
