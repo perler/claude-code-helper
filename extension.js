@@ -321,6 +321,7 @@ function buildSessionTooltip(session, meta) {
     blocks.push({ label: 'Last reply', body: meta.lastAssistant, emoji: '🤖' });
   }
   const metaLines = [];
+  if (session.live) metaLines.push('🟢 running in another window — click to attach here');
   if (meta.cwd) metaLines.push(`📁 \`${meta.cwd}\``);
   metaLines.push(`🆔 \`${session.id}\``);
   metaLines.push(`🕐 ${relativeTime(session.mtime)} · ${new Date(session.mtime).toLocaleString()}`);
@@ -557,6 +558,7 @@ function launchClaudeTmux(fav, resumeArg) {
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir, iconPath: launchIcon(resumeArg) });
   terminal.show();
   terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
+  registerSessionTerminal(id, terminal);
 }
 
 function launchClaudeDtach(fav, resumeArg) {
@@ -602,11 +604,19 @@ function launchClaudeDtach(fav, resumeArg) {
   const sock = JSON.stringify(socket);
   const relay = dtdrainBin();
   const attach = `dtach -a ${sock} -E -z -r winch` + (relay ? ` | ${JSON.stringify(relay)}` : '');
+  // Steal semantics: kill any attach client already on this socket before we
+  // attach, so grabbing a session from another window/machine moves it here
+  // instead of mirroring input into both (the old window's client drops back to
+  // its shell prompt; the master — and Claude — are untouched). A fresh launch
+  // has no clients yet, so the pkill is a no-op there. Runs before our own
+  // attach starts, so it can't kill it.
+  const steal = `pkill -f ${JSON.stringify('dtach -a ' + socket)} 2>/dev/null`;
   // Leading space keeps this internal launch line out of ~/.bash_history: bash's
   // ignorespace (set via HISTCONTROL=ignoreboth in the default .bashrc the interactive
   // terminal sources) drops space-prefixed commands from the history list. It's our
   // plumbing, not something the user typed, so it shouldn't clutter their history.
-  terminal.sendText(` ${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
+  terminal.sendText(` ${steal}; ${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
+  registerSessionTerminal(id, terminal);
 }
 
 // On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
@@ -923,10 +933,13 @@ function scanRecentSessions() {
 // Session ids that have a live claude process right now. Every launch path puts
 // the id on the claude command line (--session-id for new sessions, --resume for
 // resumes — the tmux/dtach runner scripts and plain-terminal launches alike), so
-// one ps scan yields the exact running set. Used to drop running sessions from
-// Recent Sessions: clicking one there would attach a SECOND client to the same
-// tmux/dtach session (mirrored input, smallest-client sizing) — it's already
-// reachable via Running Sessions / Agent Sessions. Deliberately NOT
+// one ps scan yields the exact running set. Recent Sessions uses this to decide
+// how to present running sessions: hidden when their attach terminal is in THIS
+// window (clicking would attach a SECOND client — mirrored input; they're already
+// one click away in Running Sessions), shown with a 🟢 marker when they're
+// attached elsewhere (another code-server window / machine — the dtach master
+// keeps Claude alive across browser disconnects, so without this they'd be
+// invisible everywhere but the window that started them). Deliberately NOT
 // tmuxHasSession(): the runner keeps a bash alive after claude exits, so
 // tmux-liveness would keep hiding sessions that have actually ended.
 function liveSessionIds() {
@@ -937,6 +950,31 @@ function liveSessionIds() {
     for (let m; (m = re.exec(out)); ) ids.add(m[1]);
   } catch { /* ps unavailable — show everything rather than hide wrongly */ }
   return ids;
+}
+
+// Terminals this window created for helper-launched sessions, keyed by session
+// id. vscode.window.terminals is per-window, which is exactly the point: this
+// map lets Recent Sessions distinguish "running with its attach terminal right
+// here" (hide the row) from "running, but attached in some other window/machine"
+// (show it — see liveSessionIds). Entries drop when their terminal closes. A
+// window reload clears the map and restored attach terminals aren't
+// re-associated; worst case a session shows 🟢 alongside its own restored
+// terminal, and clicking it re-attaches (stealing from the restored client —
+// harmless and self-healing).
+const sessionTerminals = new Map();
+function registerSessionTerminal(id, terminal) { sessionTerminals.set(id, terminal); }
+function sessionAttachedHere(id) {
+  const t = sessionTerminals.get(id);
+  return !!t && vscode.window.terminals.includes(t);
+}
+
+// The dtach socket a live session can be re-attached through, or null. Only
+// dtach launches are grabbable cross-window from Recent Sessions: tmux launches
+// live in the agent index (reachable in any window via Agent Sessions), and
+// plain-terminal launches have no master to attach to.
+function sessionDtachSocket(id) {
+  const sock = path.join(dtachSocketDir(), id + '.sock');
+  try { return fs.existsSync(sock) ? sock : null; } catch { return null; }
 }
 
 // Two same-titled sessions living in different folders are indistinguishable in
@@ -1010,7 +1048,19 @@ class SessionsProvider {
     if (!this._cache) {
       const hidden = hiddenSessions();
       const live = liveSessionIds();
-      const all = scanRecentSessions().filter((s) => !hidden.has(s.id) && !live.has(s.id));
+      const all = scanRecentSessions().filter((s) => {
+        if (hidden.has(s.id)) return false;
+        if (!live.has(s.id)) return true;
+        // Running session: hide it when its attach terminal is in this window
+        // (reachable via Running Sessions; a second attach would mirror input)
+        // or when there's no dtach master to grab (tmux → Agent Sessions view;
+        // plain-terminal → nothing to attach to). Otherwise it was started from
+        // another window/machine — show it 🟢 so it stays discoverable; resume
+        // steals the attach client over to this window.
+        if (sessionAttachedHere(s.id) || !sessionDtachSocket(s.id)) return false;
+        s.live = true;
+        return true;
+      });
       const q = this._filter.toLowerCase();
       const sessions = q ? all.filter((s) => this._matches(s, q)) : all;
       if (this.view) {
@@ -1042,11 +1092,15 @@ class SessionsProvider {
     if (!s.cwd && meta.cwd) s.cwd = meta.cwd;
     getSessionCwd(s); // populate s.cwd for the tooltip
     const it = new vscode.TreeItem(title, vscode.TreeItemCollapsibleState.None);
-    it.description = relativeTime(s.mtime);
+    it.description = (s.live ? '🟢 ' : '') + relativeTime(s.mtime);
     it.tooltip = buildSessionTooltip(s, meta);
-    it.contextValue = 'session';
-    it.iconPath = new vscode.ThemeIcon('comment-discussion');
-    it.command = { command: 'claudeHelper.resumeSession', title: 'Resume Session', arguments: [node] };
+    // Live rows get their own contextValue so the destructive menu entries
+    // (Delete Session) don't apply to a session that's still running.
+    it.contextValue = s.live ? 'sessionLive' : 'session';
+    it.iconPath = s.live
+      ? new vscode.ThemeIcon('comment-discussion', new vscode.ThemeColor('terminal.ansiGreen'))
+      : new vscode.ThemeIcon('comment-discussion');
+    it.command = { command: 'claudeHelper.resumeSession', title: s.live ? 'Attach Session' : 'Resume Session', arguments: [node] };
     return it;
   }
   getChildren(node) {
@@ -1069,6 +1123,16 @@ async function resumeSessionNode(node) {
     return;
   }
   const fav = { path: cwd, label: path.basename(cwd) };
+  // Still running with a dtach master (started from another window/machine, or
+  // its terminal here was closed): don't spawn a second claude via --resume —
+  // go straight to the dtach path, which attaches to the existing master (its
+  // `dtach -n` is a no-op on a live socket) after stealing any other client.
+  // Re-checked at click time (not s.live from render time): the session may
+  // have ended since, in which case a normal resume is correct.
+  if (sessionDtachSocket(s.id) && liveSessionIds().has(s.id)) {
+    launchClaudeDtach(fav, s.id);
+    return;
+  }
   await launchClaude(fav, s.id);
 }
 
@@ -1701,7 +1765,14 @@ function activate(context) {
   const refreshTerms = () => termProvider.refresh();
   context.subscriptions.push(
     vscode.window.onDidOpenTerminal(refreshTerms),
-    vscode.window.onDidCloseTerminal(refreshTerms),
+    // Closing a session's attach terminal doesn't end the session (the dtach
+    // master keeps Claude alive) — drop the map entry and refresh Recent
+    // Sessions so the row reappears there as 🟢 running.
+    vscode.window.onDidCloseTerminal((t) => {
+      for (const [id, term] of sessionTerminals) if (term === t) sessionTerminals.delete(id);
+      refreshTerms();
+      if (sessProvider) { try { sessProvider.refresh(); } catch {} }
+    }),
     vscode.window.onDidChangeActiveTerminal(refreshTerms),
     vscode.window.onDidChangeTerminalShellIntegration && vscode.window.onDidChangeTerminalShellIntegration(refreshTerms),
     // Window regained focus (fires on browser/notebook reconnect): force live dtach

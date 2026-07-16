@@ -2,7 +2,7 @@
 	"name": "claude-code-helper",
 	"displayName": "Claude Code Helper",
 	"description": "Favourite directories + open terminal list for Claude Code workflows",
-	"version": "0.9.2",
+	"version": "0.9.3",
 	"publisher": "pat-erler",
 	"engines": {
 		"vscode": "^1.80.0"
@@ -501,37 +501,37 @@
 				},
 				{
 					"command": "claudeHelper.resumeSession",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "inline@1"
 				},
 				{
 					"command": "claudeHelper.resumeSession",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "1_open@1"
 				},
 				{
 					"command": "claudeHelper.openSessionFolder",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "1_open@2"
 				},
 				{
 					"command": "claudeHelper.revealSessionFile",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "1_open@3"
 				},
 				{
 					"command": "claudeHelper.copySessionId",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "2_copy@1"
 				},
 				{
 					"command": "claudeHelper.copySessionPath",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "2_copy@2"
 				},
 				{
 					"command": "claudeHelper.hideSession",
-					"when": "view == claudeHelper.sessions && viewItem == session",
+					"when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
 					"group": "3_remove@1"
 				},
 				{
