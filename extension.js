@@ -645,11 +645,19 @@ async function launchClaude(fav, resumeArg, opts = {}) {
   }
   const mode = await pickTerminalMode();
   if (!mode) return;
-  if (mode === 'internal' && useTmux()) { launchClaudeTmux(fav, resumeArg); return; }
-  if (mode === 'internal' && useDtach()) { launchClaudeDtach(fav, resumeArg); return; }
-  const cmd = buildClaudeCommand(resumeArg);
-  if (mode === 'external') runInExternalTerminal(fav.path, cmd);
-  else runInInternalTerminal(fav.label || path.basename(fav.path), fav.path, cmd, launchIcon(resumeArg));
+  if (mode === 'internal' && useTmux()) launchClaudeTmux(fav, resumeArg);
+  else if (mode === 'internal' && useDtach()) launchClaudeDtach(fav, resumeArg);
+  else {
+    const cmd = buildClaudeCommand(resumeArg);
+    if (mode === 'external') runInExternalTerminal(fav.path, cmd);
+    else runInInternalTerminal(fav.label || path.basename(fav.path), fav.path, cmd, launchIcon(resumeArg));
+  }
+  // Running sessions are filtered out of Recent Sessions (liveSessionIds); nudge
+  // the view shortly after launch so the row disappears now, not on the next 60s
+  // tick. Staggered: tmux spawns claude near-instantly, but the dtach/plain paths
+  // go through terminal.sendText and a shell startup, so the process can take a
+  // few seconds to show up in ps.
+  if (sessProvider) for (const ms of [2000, 8000]) setTimeout(() => { try { sessProvider.refresh(); } catch {} }, ms);
 }
 
 async function startClaude(fav) {
@@ -912,6 +920,25 @@ function scanRecentSessions() {
   return out.slice(0, maxItems);
 }
 
+// Session ids that have a live claude process right now. Every launch path puts
+// the id on the claude command line (--session-id for new sessions, --resume for
+// resumes — the tmux/dtach runner scripts and plain-terminal launches alike), so
+// one ps scan yields the exact running set. Used to drop running sessions from
+// Recent Sessions: clicking one there would attach a SECOND client to the same
+// tmux/dtach session (mirrored input, smallest-client sizing) — it's already
+// reachable via Running Sessions / Agent Sessions. Deliberately NOT
+// tmuxHasSession(): the runner keeps a bash alive after claude exits, so
+// tmux-liveness would keep hiding sessions that have actually ended.
+function liveSessionIds() {
+  const ids = new Set();
+  try {
+    const out = cp.execSync('ps -eo args=', { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    const re = /--(?:session-id|resume)[ =]([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/g;
+    for (let m; (m = re.exec(out)); ) ids.add(m[1]);
+  } catch { /* ps unavailable — show everything rather than hide wrongly */ }
+  return ids;
+}
+
 // Two same-titled sessions living in different folders are indistinguishable in
 // the tree, so a stale one can be retired: "Hide Session" drops the row but
 // leaves the transcript on disk (still resumable from the CLI, and restorable
@@ -982,7 +1009,8 @@ class SessionsProvider {
   _load() {
     if (!this._cache) {
       const hidden = hiddenSessions();
-      const all = scanRecentSessions().filter((s) => !hidden.has(s.id));
+      const live = liveSessionIds();
+      const all = scanRecentSessions().filter((s) => !hidden.has(s.id) && !live.has(s.id));
       const q = this._filter.toLowerCase();
       const sessions = q ? all.filter((s) => this._matches(s, q)) : all;
       if (this.view) {
@@ -1174,6 +1202,7 @@ async function resumeAgentSession(node) {
 }
 
 let agentProvider;
+let sessProvider; // module-level so launchClaude can nudge Recent Sessions after a launch
 
 function removeAgentEntry(node) {
   if (!node || !node.entry) return;
@@ -1416,7 +1445,7 @@ function activate(context) {
   });
   context.subscriptions.push(termView);
 
-  const sessProvider = new SessionsProvider();
+  sessProvider = new SessionsProvider();
   const sessView = vscode.window.createTreeView('claudeHelper.sessions', {
     treeDataProvider: sessProvider, showCollapseAll: true,
   });
