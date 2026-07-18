@@ -113,6 +113,7 @@ function runInInternalTerminal(name, cwd, cmd, icon) {
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd, iconPath: icon });
   terminal.show();
   terminal.sendText(cmd);
+  return terminal;
 }
 
 function runInExternalTerminal(cwd, cmd) {
@@ -222,11 +223,14 @@ function _readSessionMetaUncached(file, size) {
     return lines;
   };
 
-  let customTitle = null, firstUserMsg = null, cwd = null, summary = null;
+  let customTitle = null, aiTitle = null, firstUserMsg = null, cwd = null, summary = null;
   for (const line of parseLines(headText, false)) {
     if (!line) continue;
     let rec; try { rec = JSON.parse(line); } catch { continue; }
     if (!customTitle && rec.type === 'custom-title' && rec.customTitle) customTitle = rec.customTitle;
+    // Claude Code writes a short, model-generated title from the first prompt as an
+    // `ai-title` record (may be refined, so let a later one override — last wins).
+    if (rec.type === 'ai-title' && rec.aiTitle) aiTitle = rec.aiTitle;
     if (!firstUserMsg && rec.type === 'user' && rec.message) firstUserMsg = extractText(rec.message.content);
     if (!cwd && typeof rec.cwd === 'string') cwd = rec.cwd;
     if (!summary && rec.type === 'summary' && typeof rec.summary === 'string') summary = rec.summary;
@@ -237,6 +241,7 @@ function _readSessionMetaUncached(file, size) {
   for (const line of tailLines) {
     if (!line) continue;
     let rec; try { rec = JSON.parse(line); } catch { continue; }
+    if (rec.type === 'ai-title' && rec.aiTitle) aiTitle = rec.aiTitle;
     // Track the newest real conversation event time. fs mtime is unreliable for
     // "last activity": a long-lived idle session keeps getting its transcript
     // rewritten (checkpoint flush — same content), which bumps mtime to "now"
@@ -253,9 +258,23 @@ function _readSessionMetaUncached(file, size) {
     }
   }
 
-  const txt = customTitle || firstUserMsg;
+  // Title priority. Claude auto-sets `custom-title` to the cwd path ("tasks/2026-07-18-0747")
+  // and separately generates a short `ai-title` from the first prompt. A real /rename also
+  // writes `custom-title`, but to a value that isn't the cwd path — that always wins. For
+  // date-coded scratch dirs (launched with no name) the path title is useless, so prefer the
+  // ai-title; named dirs keep their meaningful "parent/base" path label.
+  const segs = cwd ? cwd.split('/').filter(Boolean) : [];
+  const pathNames = new Set();
+  if (segs.length) {
+    pathNames.add(segs[segs.length - 1]);
+    if (segs.length >= 2) pathNames.add(segs.slice(-2).join('/'));
+  }
+  const realCustom = customTitle && !pathNames.has(customTitle) ? customTitle : null;
+  const dateCoded = segs.length > 0 && /^\d{4}-\d{2}-\d{2}-\d{4}$/.test(segs[segs.length - 1]);
+  const txt = realCustom || (dateCoded && aiTitle ? aiTitle : null) || customTitle || aiTitle || firstUserMsg;
   return {
     title: txt ? txt.replace(/\s+/g, ' ').trim().slice(0, 80) : null,
+    aiTitle: aiTitle ? aiTitle.replace(/\s+/g, ' ').trim() : null,
     cwd,
     summary: summary ? summary.replace(/\s+/g, ' ').trim() : null,
     firstUserMsg: firstUserMsg ? firstUserMsg.replace(/\s+/g, ' ').trim() : null,
@@ -266,7 +285,7 @@ function _readSessionMetaUncached(file, size) {
 }
 
 function emptyMeta() {
-  return { title: null, cwd: null, summary: null, firstUserMsg: null, lastUser: null, lastAssistant: null, lastTs: null };
+  return { title: null, aiTitle: null, cwd: null, summary: null, firstUserMsg: null, lastUser: null, lastAssistant: null, lastTs: null };
 }
 
 function readSessionTitle(file) {
@@ -559,6 +578,7 @@ function launchClaudeTmux(fav, resumeArg) {
   terminal.show();
   terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
   registerSessionTerminal(id, terminal);
+  return terminal;
 }
 
 function launchClaudeDtach(fav, resumeArg) {
@@ -617,6 +637,7 @@ function launchClaudeDtach(fav, resumeArg) {
   // plumbing, not something the user typed, so it shouldn't clutter their history.
   terminal.sendText(` ${steal}; ${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
   registerSessionTerminal(id, terminal);
+  return terminal;
 }
 
 // On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
@@ -644,6 +665,44 @@ function redrawDtachSessions() {
   setTimeout(nudge, 250);
 }
 
+// A launch name is "auto" (date-coded) when the user left the name blank and it fell
+// back to timestampName() — the YYYY-MM-DD-HHMM shape. Those are the tabs worth renaming.
+function isAutoName(label) {
+  return typeof label === 'string' && /^\d{4}-\d{2}-\d{2}-\d{4}$/.test(label.trim());
+}
+
+// Rename a specific terminal's tab. renameWithArg targets the *active* terminal, so
+// briefly make this one active (keeping keyboard focus in the editor), then restore.
+async function renameTerminalTab(terminal, name) {
+  if (!terminal || terminal.exitStatus) return;
+  const label = name.replace(/\s+/g, ' ').trim().slice(0, 60);
+  if (!label) return;
+  const prevActive = vscode.window.activeTerminal;
+  terminal.show(true);
+  try { await vscode.commands.executeCommand('workbench.action.terminal.renameWithArg', { name: label }); } catch {}
+  if (prevActive && prevActive !== terminal) { try { prevActive.show(true); } catch {} }
+}
+
+// Claude generates a short `ai-title` from the first prompt a few seconds after launch.
+// Poll the transcript for it and rename the (date-coded) tab to it. Best-effort: the
+// terminal may be closed, or the title may never arrive on a very short session — give
+// up after ~50s either way.
+function scheduleTabTitleRename(terminal, projectDir, launchTs) {
+  let tries = 0;
+  const timer = setInterval(() => {
+    if (!terminal || terminal.exitStatus || ++tries > 20) { clearInterval(timer); return; }
+    let title = null;
+    try {
+      for (const s of listSessions(projectDir)) { // newest first
+        if (s.mtime < launchTs - 5000) break;      // predates this launch — not ours
+        const m = readSessionMeta(s.file);
+        if (m.aiTitle) { title = m.aiTitle; break; }
+      }
+    } catch {}
+    if (title) { clearInterval(timer); renameTerminalTab(terminal, title); }
+  }, 2500);
+}
+
 async function launchClaude(fav, resumeArg, opts = {}) {
   // Every new-session launch asks for a name first (timestamp if left blank).
   // Resumes keep the existing session, so they skip the prompt; newScratchSession
@@ -655,12 +714,18 @@ async function launchClaude(fav, resumeArg, opts = {}) {
   }
   const mode = await pickTerminalMode();
   if (!mode) return;
-  if (mode === 'internal' && useTmux()) launchClaudeTmux(fav, resumeArg);
-  else if (mode === 'internal' && useDtach()) launchClaudeDtach(fav, resumeArg);
+  let terminal;
+  if (mode === 'internal' && useTmux()) terminal = launchClaudeTmux(fav, resumeArg);
+  else if (mode === 'internal' && useDtach()) terminal = launchClaudeDtach(fav, resumeArg);
   else {
     const cmd = buildClaudeCommand(resumeArg);
     if (mode === 'external') runInExternalTerminal(fav.path, cmd);
-    else runInInternalTerminal(fav.label || path.basename(fav.path), fav.path, cmd, launchIcon(resumeArg));
+    else terminal = runInInternalTerminal(fav.label || path.basename(fav.path), fav.path, cmd, launchIcon(resumeArg));
+  }
+  // Date-coded (unnamed) new launches show a timestamp in the tab; swap it for Claude's
+  // generated ai-title once it lands in the transcript. Named launches keep their name.
+  if (terminal && resumeArg === false && isAutoName(fav.label)) {
+    scheduleTabTitleRename(terminal, fav.path, Date.now());
   }
   // Running sessions are filtered out of Recent Sessions (liveSessionIds); nudge
   // the view shortly after launch so the row disappears now, not on the next 60s
