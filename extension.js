@@ -773,6 +773,12 @@ function renameScratchSession(oldDir, aiTitle) {
     const u = t.split(oldDir).join(newDir);
     if (u !== t) fs.writeFileSync(runner, u, { mode: 0o755 });
   } catch {}
+  // Deliberately NOT re-keyed: the ~/.claude.json `.projects[oldDir]` entry. For these
+  // --dangerously-skip-permissions scratch sessions it's inert (empty trust/allowedTools/
+  // mcpServers — only cosmetic usage stats), and that file is a global config every live
+  // claude process rewrites, so a background read-modify-write here would race their
+  // updates for no functional gain. The stale key is a harmless orphan; resume works via
+  // the rewritten transcript cwd above.
   // Point any agent-index (tmux) entries at the new dir.
   try {
     const idx = readAgentIndex();
