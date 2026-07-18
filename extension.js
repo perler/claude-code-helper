@@ -54,6 +54,20 @@ function timestampName() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
 }
 
+// A YYYY-MM-DD-HHMM folder name — what an unnamed (rocket/scratch) launch produces.
+const DATE_NAME_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
+
+// Spaces-free folder slug from an ai-title, e.g. "Connect books.x.com to Kobo" →
+// "connect-books-x-com-to-kobo". Same shape as newScratchSession's label slug.
+function slugifyTitle(title) {
+  return String(title || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+    .replace(/-+$/, '');
+}
+
 // Pre-fill the session-name prompt with something derived from the launch dir.
 // Sessions under ~/clients/<CODE>/… get a "CODE/folder" prefix so it's clear
 // which client they belong to (just "CODE" when launched at the client root);
@@ -270,8 +284,11 @@ function _readSessionMetaUncached(file, size) {
     if (segs.length >= 2) pathNames.add(segs.slice(-2).join('/'));
   }
   const realCustom = customTitle && !pathNames.has(customTitle) ? customTitle : null;
-  const dateCoded = segs.length > 0 && /^\d{4}-\d{2}-\d{2}-\d{4}$/.test(segs[segs.length - 1]);
-  const txt = realCustom || (dateCoded && aiTitle ? aiTitle : null) || customTitle || aiTitle || firstUserMsg;
+  // Prefer the ai-title for our scratch sessions: either still date-coded (unnamed
+  // launch) or already auto-renamed to the title's slug (folder base === the slug).
+  const base = segs.length ? segs[segs.length - 1] : '';
+  const preferAi = !!aiTitle && (DATE_NAME_RE.test(base) || base === slugifyTitle(aiTitle));
+  const txt = realCustom || (preferAi ? aiTitle : null) || customTitle || aiTitle || firstUserMsg;
   return {
     title: txt ? txt.replace(/\s+/g, ' ').trim().slice(0, 80) : null,
     aiTitle: aiTitle ? aiTitle.replace(/\s+/g, ' ').trim() : null,
@@ -668,7 +685,7 @@ function redrawDtachSessions() {
 // A launch name is "auto" (date-coded) when the user left the name blank and it fell
 // back to timestampName() — the YYYY-MM-DD-HHMM shape. Those are the tabs worth renaming.
 function isAutoName(label) {
-  return typeof label === 'string' && /^\d{4}-\d{2}-\d{2}-\d{4}$/.test(label.trim());
+  return typeof label === 'string' && DATE_NAME_RE.test(label.trim());
 }
 
 // Rename a specific terminal's tab. renameWithArg targets the *active* terminal, so
@@ -701,6 +718,107 @@ function scheduleTabTitleRename(terminal, projectDir, launchTs) {
     } catch {}
     if (title) { clearInterval(timer); renameTerminalTab(terminal, title); }
   }, 2500);
+}
+
+// ─── auto-rename date-coded scratch folders to their ai-title ────────────────────
+//
+// A rocket/scratch launch with no name given gets a timestamp folder (~/tasks/
+// 2026-07-18-0747). Claude generates a short ai-title from the first prompt; once the
+// session is no longer live, rename the folder (and its transcript project dir) to the
+// title's slug so ~/tasks stays legible. This MUST NOT run on a live session: Claude
+// caches its cwd string at startup and re-derives the transcript path from it per write,
+// so renaming a running session's folder splits the transcript (verified). The sweep
+// below only touches sessions with no running claude process.
+
+function autoRenameEnabled() { return cfg().get('autoRenameScratchSessions') !== false; }
+
+// Rewrite absolute + "parent/base" path references inside a (moved) project dir's
+// transcripts from oldDir → newDir. Safe only when the session isn't live.
+function rewriteTranscriptPaths(projDir, oldDir, newDir) {
+  const oldRel = `${path.basename(path.dirname(oldDir))}/${path.basename(oldDir)}`;
+  const newRel = `${path.basename(path.dirname(newDir))}/${path.basename(newDir)}`;
+  let files; try { files = fs.readdirSync(projDir).filter((f) => f.endsWith('.jsonl')); } catch { return; }
+  for (const f of files) {
+    const p = path.join(projDir, f);
+    let txt; try { txt = fs.readFileSync(p, 'utf8'); } catch { continue; }
+    const out = txt.split(oldDir).join(newDir).split(oldRel).join(newRel);
+    if (out !== txt) { try { fs.writeFileSync(p, out); } catch {} }
+  }
+}
+
+// Rename a finished scratch session's folder + transcript dir to the ai-title slug and
+// rewrite the baked-in cwd so it stays resumable. Returns the new dir, or null.
+function renameScratchSession(oldDir, aiTitle) {
+  const slug = slugifyTitle(aiTitle);
+  if (!slug || slug === path.basename(oldDir)) return null;
+  const parent = path.dirname(oldDir);
+  let newDir = path.join(parent, slug);
+  if (fs.existsSync(newDir)) {
+    let i = 2, cand;
+    do { cand = path.join(parent, `${slug}-${i++}`); } while (fs.existsSync(cand));
+    newDir = cand;
+  }
+  try { fs.renameSync(oldDir, newDir); } catch { return null; }
+  const projRoot = path.join(os.homedir(), '.claude', 'projects');
+  const oldProj = path.join(projRoot, encodeProjectDir(oldDir));
+  const newProj = path.join(projRoot, encodeProjectDir(newDir));
+  try {
+    if (fs.existsSync(oldProj) && !fs.existsSync(newProj)) fs.renameSync(oldProj, newProj);
+    rewriteTranscriptPaths(newProj, oldDir, newDir);
+  } catch {}
+  // Fix the launcher's `cd` line so re-running .run-claude.sh still works.
+  try {
+    const runner = path.join(newDir, '.run-claude.sh');
+    const t = fs.readFileSync(runner, 'utf8');
+    const u = t.split(oldDir).join(newDir);
+    if (u !== t) fs.writeFileSync(runner, u, { mode: 0o755 });
+  } catch {}
+  // Point any agent-index (tmux) entries at the new dir.
+  try {
+    const idx = readAgentIndex();
+    let changed = false;
+    for (const e of idx) if (e.dir === oldDir) {
+      e.dir = newDir;
+      if (e.displayName === path.basename(oldDir)) e.displayName = path.basename(newDir);
+      changed = true;
+    }
+    if (changed) { writeAgentIndex(idx); if (agentProvider) { try { agentProvider.refresh(); } catch {} } }
+  } catch {}
+  return newDir;
+}
+
+// Find date-coded scratch folders whose session has ended and rename them to the
+// ai-title slug. Runs periodically and on session-terminal close.
+function sweepScratchRenames() {
+  if (!autoRenameEnabled()) return;
+  let scratchRoot;
+  try { scratchRoot = expandHome(cfg().get('scratchDir') || '~/tasks'); } catch { return; }
+  const encPrefix = encodeProjectDir(scratchRoot) + '-';
+  const projRoot = path.join(os.homedir(), '.claude', 'projects');
+  let dirs; try { dirs = fs.readdirSync(projRoot); } catch { return; }
+  let live = null, renamedAny = false;
+  for (const proj of dirs) {
+    if (!proj.startsWith(encPrefix)) continue;
+    const base = proj.slice(encPrefix.length);
+    if (!DATE_NAME_RE.test(base)) continue;              // only unnamed date-coded folders
+    const folder = path.join(scratchRoot, base);
+    if (!fs.existsSync(folder)) continue;
+    let files; try { files = fs.readdirSync(path.join(projRoot, proj)).filter((f) => f.endsWith('.jsonl')); } catch { continue; }
+    if (!files.length) continue;
+    if (live === null) live = liveSessionIds();
+    if (files.some((f) => live.has(f.slice(0, -'.jsonl'.length)))) continue;  // a session here is still running
+    // Newest session's ai-title represents the folder.
+    let best = null, bestT = -1;
+    for (const f of files) {
+      let m; try { m = readSessionMeta(path.join(projRoot, proj, f)); } catch { continue; }
+      if (!m.aiTitle) continue;
+      const t = m.lastTs ? Date.parse(m.lastTs) || 0 : 0;
+      if (t >= bestT) { bestT = t; best = m.aiTitle; }
+    }
+    if (!best) continue;
+    if (renameScratchSession(folder, best)) renamedAny = true;
+  }
+  if (renamedAny && sessProvider) { try { sessProvider.refresh(); } catch {} }
 }
 
 async function launchClaude(fav, resumeArg, opts = {}) {
@@ -1837,6 +1955,9 @@ function activate(context) {
       for (const [id, term] of sessionTerminals) if (term === t) sessionTerminals.delete(id);
       refreshTerms();
       if (sessProvider) { try { sessProvider.refresh(); } catch {} }
+      // Its claude process may take a moment to exit; sweep shortly after so an
+      // ended scratch session's folder gets renamed without waiting for the 60s tick.
+      setTimeout(() => { try { sweepScratchRenames(); } catch {} }, 4000);
     }),
     vscode.window.onDidChangeActiveTerminal(refreshTerms),
     vscode.window.onDidChangeTerminalShellIntegration && vscode.window.onDidChangeTerminalShellIntegration(refreshTerms),
@@ -1848,9 +1969,12 @@ function activate(context) {
     })
   );
 
-  // Sessions: light periodic refresh (every 60s) so relative times and new sessions appear.
-  const sessTimer = setInterval(() => sessProvider.refresh(), 60_000);
+  // Sessions: light periodic refresh (every 60s) so relative times and new sessions
+  // appear; also sweep for ended date-coded scratch folders to auto-rename them.
+  const sessTimer = setInterval(() => { try { sweepScratchRenames(); } catch {} sessProvider.refresh(); }, 60_000);
   context.subscriptions.push({ dispose: () => clearInterval(sessTimer) });
+  // Catch sessions that ended while this window was closed.
+  setTimeout(() => { try { sweepScratchRenames(); } catch {} }, 5_000);
 
   // Agent Sessions: faster refresh (15s) so live/ended status and new pickups
   // appear promptly, plus a watcher on the index file for instant updates.

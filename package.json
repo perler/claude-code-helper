@@ -2,7 +2,7 @@
 	"name": "claude-code-helper",
 	"displayName": "Claude Code Helper",
 	"description": "Favourite directories + open terminal list for Claude Code workflows",
-	"version": "0.10.0",
+	"version": "0.11.0",
 	"publisher": "pat-erler",
 	"engines": {
 		"vscode": "^1.80.0"
@@ -742,6 +742,11 @@
 					"type": "string",
 					"default": "~/tasks",
 					"description": "Base directory for the New Claude Session button. Each session gets a timestamped subfolder here; rename/move it later once the work is permanent."
+				},
+				"claudeHelper.autoRenameScratchSessions": {
+					"type": "boolean",
+					"default": true,
+					"description": "Once a timestamp-named scratch session (in scratchDir) has ended, automatically rename its folder to a slug of Claude's generated title. Only runs when the session's claude process is not live (renaming a running session would split its transcript)."
 				},
 				"claudeHelper.bookmarksFile": {
 					"type": "string",
