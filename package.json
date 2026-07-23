@@ -2,7 +2,7 @@
 	"name": "claude-code-helper",
 	"displayName": "Claude Code Helper",
 	"description": "Favourite directories + open terminal list for Claude Code workflows",
-	"version": "0.11.0",
+	"version": "0.12.0",
 	"publisher": "pat-erler",
 	"engines": {
 		"vscode": "^1.80.0"
@@ -255,6 +255,16 @@
 				"icon": "$(refresh)"
 			},
 			{
+				"command": "claudeHelper.searchAgentSessions",
+				"title": "Search Agent Sessions",
+				"icon": "$(search)"
+			},
+			{
+				"command": "claudeHelper.clearAgentSessionsSearch",
+				"title": "Clear Agent Session Search",
+				"icon": "$(clear-all)"
+			},
+			{
 				"command": "claudeHelper.attachAgentSession",
 				"title": "Attach Session",
 				"icon": "$(plug)"
@@ -378,9 +388,19 @@
 					"group": "navigation@3"
 				},
 				{
+					"command": "claudeHelper.searchAgentSessions",
+					"when": "view == claudeHelper.agentSessions",
+					"group": "navigation@0"
+				},
+				{
+					"command": "claudeHelper.clearAgentSessionsSearch",
+					"when": "view == claudeHelper.agentSessions && claudeHelper.agentSessionsFiltered",
+					"group": "navigation@1"
+				},
+				{
 					"command": "claudeHelper.refreshAgentSessions",
 					"when": "view == claudeHelper.agentSessions",
-					"group": "navigation@1"
+					"group": "navigation@2"
 				},
 				{
 					"command": "claudeHelper.addBookmark",

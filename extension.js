@@ -1392,8 +1392,27 @@ class AgentSessionsProvider {
   constructor() {
     this._em = new vscode.EventEmitter();
     this.onDidChangeTreeData = this._em.event;
+    this._filter = '';
+    this.view = null; // set after createTreeView so we can show the match count
+  }
+  get filter() { return this._filter; }
+  setFilter(q) {
+    const next = (q || '').trim();
+    if (next === this._filter) return;
+    this._filter = next;
+    vscode.commands.executeCommand('setContext', 'claudeHelper.agentSessionsFiltered', !!next);
+    this.refresh();
   }
   refresh() { this._em.fire(); }
+  _matches(entry, q) {
+    let meta = null;
+    try { meta = readSessionMeta(agentSessionFile(entry)); } catch {}
+    const hay = [
+      entry.displayName, entry.dir, entry.sessionId, entry.permalink,
+      meta && meta.title, meta && meta.summary, meta && meta.firstUserMsg,
+    ].filter(Boolean).join('\n').toLowerCase();
+    return hay.includes(q);
+  }
   getTreeItem(node) {
     const e = node.entry;
     const live = node.live;
@@ -1422,7 +1441,14 @@ class AgentSessionsProvider {
     return item;
   }
   getChildren() {
-    const entries = readAgentIndex();
+    const all = readAgentIndex();
+    const q = this._filter.toLowerCase();
+    const entries = q ? all.filter((e) => this._matches(e, q)) : all;
+    if (this.view) {
+      this.view.message = q
+        ? `Filter “${this._filter}” — ${entries.length} of ${all.length} session${all.length === 1 ? '' : 's'}`
+        : undefined;
+    }
     const nodes = entries.map((entry) => ({ entry, live: tmuxAlive(entry.tmuxName) }));
     // live first, then most-recently started
     nodes.sort((a, b) => (b.live - a.live) || (String(b.entry.createdAt).localeCompare(String(a.entry.createdAt))));
@@ -1709,6 +1735,7 @@ function activate(context) {
   const agentView = vscode.window.createTreeView('claudeHelper.agentSessions', {
     treeDataProvider: agentProvider, showCollapseAll: false,
   });
+  agentProvider.view = agentView;
   context.subscriptions.push(agentView);
 
   bookmarksProvider = new BookmarksProvider();
@@ -1903,6 +1930,17 @@ function activate(context) {
 
   // agent sessions commands
   reg('claudeHelper.refreshAgentSessions', () => agentProvider.refresh());
+  reg('claudeHelper.searchAgentSessions', () => {
+    const box = vscode.window.createInputBox();
+    box.title = 'Search Agent Sessions';
+    box.placeholder = 'Filter by session name, directory or summary…';
+    box.value = agentProvider.filter;
+    box.onDidChangeValue((v) => agentProvider.setFilter(v));
+    box.onDidAccept(() => box.hide());
+    box.onDidHide(() => box.dispose());
+    box.show();
+  });
+  reg('claudeHelper.clearAgentSessionsSearch', () => agentProvider.setFilter(''));
   reg('claudeHelper.attachAgentSession', (node) => attachAgentSession(node));
   reg('claudeHelper.resumeAgentSession', (node) => resumeAgentSession(node));
   reg('claudeHelper.openAgentSessionFolder', (node) => {
