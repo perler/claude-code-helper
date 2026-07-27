@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -777,7 +777,17 @@
         "claudeHelper.titleModel": {
           "type": "string",
           "default": "claude-haiku-4-5-20251001",
-          "description": "Model used to turn an Ask Claude question into a two-word folder name."
+          "description": "Model used to name a New Task session and match it to a client or project."
+        },
+        "claudeHelper.clientsDir": {
+          "type": "string",
+          "default": "~/clients",
+          "description": "Root scanned for client folders a New Task question can be scoped to."
+        },
+        "claudeHelper.projectsDir": {
+          "type": "string",
+          "default": "~/projects",
+          "description": "Root scanned for project folders a New Task question can be scoped to."
         }
       }
     }

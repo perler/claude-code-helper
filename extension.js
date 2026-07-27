@@ -911,62 +911,148 @@ function sanitiseSlug(raw) {
   return words.slice(0, 2).join('-').slice(0, 40);
 }
 
-// Ask a cheap model for a two-word folder name. Runs headless (`claude -p`) so it
-// reuses the CLI's own auth — no API key to manage. cwd is a temp dir so the call
-// doesn't drag in the project's CLAUDE.md. Resolves '' on any failure/timeout;
-// the caller falls back to a timestamp folder, which the existing auto-rename
-// sweep later renames to the ai-title anyway.
-function generateTitleSlug(question) {
+// The client/project folders a question can be scoped to. Client shortcodes are
+// opaque (BB, RAHR, 2W), so the company name from .agent/agent.json goes to the
+// model too — matching on "BERGMANN" is far safer than on "BB". A leading '#' on
+// a client folder is a quick-find marker, not part of the shortcode.
+function listWorkTargets() {
+  const dirsIn = (root) => {
+    try {
+      return fs.readdirSync(root, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('_'))
+        .map((e) => e.name);
+    } catch { return []; }
+  };
+  const clientsRoot = expandHome(cfg().get('clientsDir') || '~/clients');
+  const projectsRoot = expandHome(cfg().get('projectsDir') || '~/projects');
+  const clients = dirsIn(clientsRoot).map((folder) => {
+    let name = '';
+    try {
+      name = JSON.parse(fs.readFileSync(path.join(clientsRoot, folder, '.agent', 'agent.json'), 'utf8')).client_name || '';
+    } catch {}
+    return { code: folder.replace(/^#/, ''), dir: path.join(clientsRoot, folder), name };
+  });
+  const projects = dirsIn(projectsRoot).map((name) => ({ name, dir: path.join(projectsRoot, name) }));
+  return { clients, projects };
+}
+
+// Ask a cheap model, in one headless call (`claude -p`, so it reuses the CLI's own
+// auth — no API key to manage), for both a two-word folder name and which client or
+// project the question belongs to. cwd is a temp dir so the call doesn't drag in a
+// project's CLAUDE.md. Resolves {slug:'', target:null} on any failure or timeout;
+// the caller then falls back to a timestamp folder under the scratch dir, which the
+// existing auto-rename sweep later renames to the ai-title anyway.
+function generateSessionPlan(question) {
   return new Promise((resolve) => {
+    const { clients, projects } = listWorkTargets();
+    const none = { slug: '', target: null };
+    const prompt = [
+      'Name a new coding-session folder and decide which client or project the question belongs to.',
+      '',
+      'Question:', question, '',
+      'Clients (shortcode — name):',
+      ...clients.map((c) => `${c.code}${c.name ? ' — ' + c.name : ''}`),
+      '',
+      'Projects:',
+      ...projects.map((p) => p.name),
+      '',
+      'Reply with ONLY a JSON object, no prose, no code fence:',
+      '{"slug":"<two words>","target":"client:<shortcode>" | "project:<name>" | "none"}',
+      '',
+      'Rules:',
+      '- slug: exactly two lowercase words joined by a hyphen, summarising the question.',
+      '- target must be copied verbatim from the lists above, or "none".',
+      '- Use "none" unless the question names or unmistakably refers to that client or project.',
+      '- Shortcodes that merely look alike (RAH vs RAHR, PR vs PRX) are unrelated clients.',
+      '  Never guess from a resemblance — prefer "none".',
+    ].join('\n');
     const tokens = (cfg().get('claudeCommand') || 'claude').trim().split(/\s+/);
-    const prompt = 'Summarise the following task as a two-word kebab-case slug '
-      + '(lowercase, exactly two words joined by a hyphen). Output ONLY the slug.\n\nTask: '
-      + question;
     let child;
     try {
       child = cp.execFile(
         tokens[0], [...tokens.slice(1), '-p', prompt, '--model', titleModel()],
-        { cwd: os.tmpdir(), timeout: 25000, maxBuffer: 1 << 20 },
-        (err, stdout) => resolve(err ? '' : sanitiseSlug(stdout))
+        { cwd: os.tmpdir(), timeout: 40000, maxBuffer: 1 << 20 },
+        (err, stdout) => resolve(err ? none : parseSessionPlan(stdout, clients, projects))
       );
-    } catch { resolve(''); return; }
-    child.on('error', () => resolve(''));
+    } catch { resolve(none); return; }
+    child.on('error', () => resolve(none));
     // `claude -p` reads stdin for piped input and waits on it; execFile leaves the
     // pipe open, so without this the call stalls until the timeout every time.
     try { child.stdin.end(); } catch {}
   });
 }
 
-// Start a fresh scratch session whose first prompt is the user's question, in a
-// folder named after a model-generated two-word title.
+// A target only counts if it matches a directory we actually scanned — a model that
+// invents or misremembers a shortcode must degrade to the scratch folder, never write
+// into some other client's directory.
+function parseSessionPlan(stdout, clients, projects) {
+  const out = { slug: '', target: null };
+  const m = String(stdout || '').match(/\{[\s\S]*\}/);
+  if (!m) return out;
+  let obj; try { obj = JSON.parse(m[0]); } catch { return out; }
+  out.slug = sanitiseSlug(obj.slug);
+  const t = String(obj.target || '').trim();
+  if (t.startsWith('client:')) {
+    const code = t.slice('client:'.length).trim();
+    const c = clients.find((x) => x.code.toLowerCase() === code.toLowerCase());
+    if (c) out.target = { kind: 'client', dir: c.dir, desc: `${c.code}${c.name ? ' — ' + c.name : ''}`, create: true };
+  } else if (t.startsWith('project:')) {
+    const name = t.slice('project:'.length).trim();
+    const p = projects.find((x) => x.name.toLowerCase() === name.toLowerCase());
+    if (p) out.target = { kind: 'project', dir: p.dir, desc: 'existing project — session runs in the repo', create: false };
+  }
+  return out;
+}
+
+function uniqueDir(dir) {
+  if (!fs.existsSync(dir)) return dir;
+  const parent = path.dirname(dir), base = path.basename(dir);
+  let i = 2, cand;
+  do { cand = path.join(parent, `${base}-${i++}`); } while (fs.existsSync(cand));
+  return cand;
+}
+
+// Start a session whose first prompt is the user's question, in the client or
+// project folder the model matched (confirmed first), else a titled scratch folder.
 async function askClaudeSession(question, onState) {
   const q = String(question || '').trim();
   if (!q) return;
   const state = (s) => { try { onState && onState(s); } catch {} };
-  const base = expandHome(cfg().get('scratchDir') || '~/tasks');
   state('naming');
-  const slug = await vscode.window.withProgress(
+  const plan = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: 'Claude: naming session…' },
-    () => generateTitleSlug(q)
+    () => generateSessionPlan(q)
   );
-  let name = slug || timestampName();
-  let dir = path.join(base, name);
-  if (fs.existsSync(dir)) {
-    let i = 2, cand;
-    do { cand = path.join(base, `${name}-${i++}`); } while (fs.existsSync(cand));
-    dir = cand;
-    name = path.basename(dir);
+  const slug = plan.slug || timestampName();
+  const scratch = { dir: path.join(expandHome(cfg().get('scratchDir') || '~/tasks'), slug), desc: 'unscoped scratch folder', create: true };
+  let choice = scratch;
+  if (plan.target) {
+    // Client shortcodes are easy to confuse and a wrong guess would write into
+    // another client's directory, so a match is always confirmed, never assumed.
+    const proposed = plan.target.kind === 'client'
+      ? { ...plan.target, dir: path.join(plan.target.dir, slug) }
+      : plan.target;
+    state('choosing');
+    const pick = await vscode.window.showQuickPick(
+      [proposed, scratch].map((t) => ({ label: `$(folder) ${shortHome(t.dir)}`, description: t.desc, target: t })),
+      { placeHolder: 'Start the session where?' }
+    );
+    if (!pick) { state('idle'); return; }
+    choice = pick.target;
   }
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch (e) {
-    state('idle');
-    vscode.window.showErrorMessage(`Claude Code Helper: could not create ${dir} — ${e.message}`);
-    return;
+  const dir = choice.create ? uniqueDir(choice.dir) : choice.dir;
+  if (choice.create) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+    } catch (e) {
+      state('idle');
+      vscode.window.showErrorMessage(`Claude Code Helper: could not create ${dir} — ${e.message}`);
+      return;
+    }
   }
   state('launching');
   try {
-    await launchClaude({ path: dir, label: name }, false, { skipNamePrompt: true, initialPrompt: q });
+    await launchClaude({ path: dir, label: path.basename(dir) }, false, { skipNamePrompt: true, initialPrompt: q });
   } finally {
     state('idle');
   }
@@ -1168,10 +1254,11 @@ class AskViewProvider {
   window.addEventListener('message', (e) => {
     const m = e.data || {};
     if (m.type !== 'state') return;
-    const busy = m.state === 'naming' || m.state === 'launching';
+    const busy = m.state !== 'idle';
     q.disabled = busy;
     bar.classList.toggle('on', busy);
     if (m.state === 'naming') startTick('Naming session…');
+    else if (m.state === 'choosing') startTick('Confirm where to start…');
     else if (m.state === 'launching') startTick('Starting Claude…');
     else { stopTick(); hint.textContent = IDLE; q.value = ''; grow(); q.focus(); }
   });
