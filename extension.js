@@ -34,7 +34,13 @@ function makeId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-function buildClaudeCommand(resumeArg) {
+// Single-quote a string for a POSIX shell. Used for the initial-prompt argument,
+// which is arbitrary user text and ends up inside .run-claude.sh / sendText.
+function shq(s) {
+  return `'${String(s).replace(/'/g, `'\\''`)}'`;
+}
+
+function buildClaudeCommand(resumeArg, initialPrompt) {
   const c = cfg();
   const cmd = c.get('claudeCommand') || 'claude';
   const parts = [cmd];
@@ -43,6 +49,9 @@ function buildClaudeCommand(resumeArg) {
   else if (typeof resumeArg === 'string' && resumeArg) parts.push('--resume', resumeArg);
   const extra = (c.get('cliFlags') || '').trim();
   if (extra) parts.push(extra);
+  // `claude [options] [prompt]` — a positional prompt starts an interactive
+  // session with that message already submitted. Must stay last.
+  if (initialPrompt) parts.push(shq(initialPrompt));
   return parts.join(' ');
 }
 
@@ -550,7 +559,7 @@ function resolveSessionId(dir, resumeArg) {
   const id = crypto.randomUUID();
   return { id, runArg: ['--session-id', id] };
 }
-function launchClaudeTmux(fav, resumeArg) {
+function launchClaudeTmux(fav, resumeArg, initialPrompt) {
   const dir = fav.path;
   const c = cfg();
   const bin = c.get('claudeCommand') || 'claude';
@@ -563,6 +572,7 @@ function launchClaudeTmux(fav, resumeArg) {
     if (c.get('skipPermissions')) parts.push('--dangerously-skip-permissions');
     parts.push(...runArg);
     const extra = (c.get('cliFlags') || '').trim(); if (extra) parts.push(extra);
+    if (initialPrompt) parts.push(shq(initialPrompt));
     const cmd = parts.join(' ');
     const runner = path.join(dir, '.run-claude.sh');
     try {
@@ -598,7 +608,7 @@ function launchClaudeTmux(fav, resumeArg) {
   return terminal;
 }
 
-function launchClaudeDtach(fav, resumeArg) {
+function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   const dir = fav.path;
   const c = cfg();
   const bin = c.get('claudeCommand') || 'claude';
@@ -607,6 +617,7 @@ function launchClaudeDtach(fav, resumeArg) {
   if (c.get('skipPermissions')) parts.push('--dangerously-skip-permissions');
   parts.push(...runArg);
   const extra = (c.get('cliFlags') || '').trim(); if (extra) parts.push(extra);
+  if (initialPrompt) parts.push(shq(initialPrompt));
   const cmd = parts.join(' ');
   const runner = path.join(dir, '.run-claude.sh');
   try {
@@ -838,11 +849,12 @@ async function launchClaude(fav, resumeArg, opts = {}) {
   }
   const mode = await pickTerminalMode();
   if (!mode) return;
+  const prompt = opts.initialPrompt;
   let terminal;
-  if (mode === 'internal' && useTmux()) terminal = launchClaudeTmux(fav, resumeArg);
-  else if (mode === 'internal' && useDtach()) terminal = launchClaudeDtach(fav, resumeArg);
+  if (mode === 'internal' && useTmux()) terminal = launchClaudeTmux(fav, resumeArg, prompt);
+  else if (mode === 'internal' && useDtach()) terminal = launchClaudeDtach(fav, resumeArg, prompt);
   else {
-    const cmd = buildClaudeCommand(resumeArg);
+    const cmd = buildClaudeCommand(resumeArg, prompt);
     if (mode === 'external') runInExternalTerminal(fav.path, cmd);
     else terminal = runInInternalTerminal(fav.label || path.basename(fav.path), fav.path, cmd, launchIcon(resumeArg));
   }
@@ -885,6 +897,79 @@ async function newScratchSession() {
     return;
   }
   await launchClaude({ path: dir, label: name }, false, { skipNamePrompt: true });
+}
+
+// ─── ask box ─────────────────────────────────────────────────────────────────
+
+function titleModel() { return cfg().get('titleModel') || 'claude-haiku-4-5-20251001'; }
+
+// Keep at most the first two hyphen-separated words of whatever the model echoed
+// back, and make it filesystem-safe. Returns '' when nothing usable came out.
+function sanitiseSlug(raw) {
+  const line = String(raw || '').trim().split('\n').filter(Boolean).pop() || '';
+  const words = line.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').split('-').filter(Boolean);
+  return words.slice(0, 2).join('-').slice(0, 40);
+}
+
+// Ask a cheap model for a two-word folder name. Runs headless (`claude -p`) so it
+// reuses the CLI's own auth — no API key to manage. cwd is a temp dir so the call
+// doesn't drag in the project's CLAUDE.md. Resolves '' on any failure/timeout;
+// the caller falls back to a timestamp folder, which the existing auto-rename
+// sweep later renames to the ai-title anyway.
+function generateTitleSlug(question) {
+  return new Promise((resolve) => {
+    const tokens = (cfg().get('claudeCommand') || 'claude').trim().split(/\s+/);
+    const prompt = 'Summarise the following task as a two-word kebab-case slug '
+      + '(lowercase, exactly two words joined by a hyphen). Output ONLY the slug.\n\nTask: '
+      + question;
+    let child;
+    try {
+      child = cp.execFile(
+        tokens[0], [...tokens.slice(1), '-p', prompt, '--model', titleModel()],
+        { cwd: os.tmpdir(), timeout: 25000, maxBuffer: 1 << 20 },
+        (err, stdout) => resolve(err ? '' : sanitiseSlug(stdout))
+      );
+    } catch { resolve(''); return; }
+    child.on('error', () => resolve(''));
+    // `claude -p` reads stdin for piped input and waits on it; execFile leaves the
+    // pipe open, so without this the call stalls until the timeout every time.
+    try { child.stdin.end(); } catch {}
+  });
+}
+
+// Start a fresh scratch session whose first prompt is the user's question, in a
+// folder named after a model-generated two-word title.
+async function askClaudeSession(question, onState) {
+  const q = String(question || '').trim();
+  if (!q) return;
+  const state = (s) => { try { onState && onState(s); } catch {} };
+  const base = expandHome(cfg().get('scratchDir') || '~/tasks');
+  state('naming');
+  const slug = await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Window, title: 'Claude: naming session…' },
+    () => generateTitleSlug(q)
+  );
+  let name = slug || timestampName();
+  let dir = path.join(base, name);
+  if (fs.existsSync(dir)) {
+    let i = 2, cand;
+    do { cand = path.join(base, `${name}-${i++}`); } while (fs.existsSync(cand));
+    dir = cand;
+    name = path.basename(dir);
+  }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    state('idle');
+    vscode.window.showErrorMessage(`Claude Code Helper: could not create ${dir} — ${e.message}`);
+    return;
+  }
+  state('launching');
+  try {
+    await launchClaude({ path: dir, label: name }, false, { skipNamePrompt: true, initialPrompt: q });
+  } finally {
+    state('idle');
+  }
 }
 
 function favFromUri(uri) {
@@ -1012,6 +1097,67 @@ class FavouritesProvider {
     return item;
   }
   getChildren() { return getFavs(this.ctx); }
+}
+
+// A webview view is the only way to get a real, always-visible text field in the
+// sidebar — tree views can't host input. Enter starts a scratch session with the
+// typed text as the first prompt; Shift+Enter adds a newline.
+class AskViewProvider {
+  resolveWebviewView(view) {
+    this.view = view;
+    view.webview.options = { enableScripts: true };
+    view.webview.html = this._html(view.webview);
+    view.webview.onDidReceiveMessage((msg) => {
+      if (!msg || msg.type !== 'ask') return;
+      askClaudeSession(msg.text, (s) => {
+        try { view.webview.postMessage({ type: 'state', state: s }); } catch {}
+      });
+    });
+  }
+  _html(webview) {
+    const nonce = crypto.randomBytes(16).toString('base64');
+    return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${nonce}';">
+<style>
+  body { padding: 6px 8px; font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+  textarea {
+    width: 100%; box-sizing: border-box; resize: none; min-height: 46px; max-height: 140px;
+    padding: 4px 6px; font-family: inherit; font-size: inherit; line-height: 1.4;
+    color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px;
+  }
+  textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+  textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
+  textarea:disabled { opacity: .6; }
+  #hint { margin-top: 4px; color: var(--vscode-descriptionForeground); font-size: 11px; min-height: 15px; }
+</style></head><body>
+<textarea id="q" rows="2" placeholder="Ask Claude…"></textarea>
+<div id="hint">Enter to start a session · Shift+Enter for a new line</div>
+<script nonce="${nonce}">
+  const vscode = acquireVsCodeApi();
+  const q = document.getElementById('q');
+  const hint = document.getElementById('hint');
+  const IDLE = 'Enter to start a session · Shift+Enter for a new line';
+  const grow = () => { q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; };
+  q.addEventListener('input', grow);
+  q.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.shiftKey) return;
+    e.preventDefault();
+    const text = q.value.trim();
+    if (!text) return;
+    vscode.postMessage({ type: 'ask', text });
+  });
+  window.addEventListener('message', (e) => {
+    const m = e.data || {};
+    if (m.type !== 'state') return;
+    const busy = m.state === 'naming' || m.state === 'launching';
+    q.disabled = busy;
+    hint.textContent = m.state === 'naming' ? 'Naming session…'
+      : m.state === 'launching' ? 'Starting Claude…' : IDLE;
+    if (m.state === 'idle') { q.value = ''; grow(); q.focus(); }
+  });
+</script></body></html>`;
+  }
 }
 
 // ─── terminals ───────────────────────────────────────────────────────────────
@@ -1712,6 +1858,10 @@ function activate(context) {
   extCtx = context;
   applyFastHoverOnce(context);
   vscode.commands.executeCommand('setContext', 'claudeHelper.hasHiddenSessions', hiddenSessions().size > 0);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider(
+    'claudeHelper.ask', new AskViewProvider(), { webviewOptions: { retainContextWhenHidden: true } }
+  ));
+
   favProvider = new FavouritesProvider(context);
   const favView = vscode.window.createTreeView('claudeHelper.favourites', {
     treeDataProvider: favProvider, showCollapseAll: false,
