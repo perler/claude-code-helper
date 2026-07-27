@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -28,7 +28,7 @@
       "claude-code-helper": [
         {
           "id": "claudeHelper.ask",
-          "name": "Ask Claude",
+          "name": "New Task",
           "type": "webview",
           "initialSize": 1
         },

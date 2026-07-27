@@ -1130,14 +1130,32 @@ class AskViewProvider {
   textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
   textarea:disabled { opacity: .6; }
   #hint { margin-top: 4px; color: var(--vscode-descriptionForeground); font-size: 11px; min-height: 15px; }
+  /* Indeterminate bar, VS Code's own: a slice sliding across a dim track. Naming
+     takes ~10s, so the wait needs to look like progress, not like a hang. */
+  #bar { height: 2px; margin-top: 4px; overflow: hidden; display: none; }
+  #bar.on { display: block; }
+  #bar > div { width: 40%; height: 100%; background: var(--vscode-progressBar-background); animation: slide 2s ease-in-out infinite; }
+  @keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
 </style></head><body>
 <textarea id="q" rows="2" placeholder="Ask Claude…"></textarea>
+<div id="bar"><div></div></div>
 <div id="hint">Enter to start a session · Shift+Enter for a new line</div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const q = document.getElementById('q');
   const hint = document.getElementById('hint');
+  const bar = document.getElementById('bar');
   const IDLE = 'Enter to start a session · Shift+Enter for a new line';
+  let tick = null, t0 = 0, label = '';
+  const stopTick = () => { if (tick) { clearInterval(tick); tick = null; } };
+  // Elapsed seconds alongside the bar — a concrete number reads as "still working"
+  // far better than a spinner alone once the wait passes a few seconds.
+  const startTick = (text) => {
+    label = text;
+    if (!tick) { t0 = Date.now(); tick = setInterval(paint, 1000); }
+    paint();
+  };
+  const paint = () => { hint.textContent = label + ' ' + Math.round((Date.now() - t0) / 1000) + 's'; };
   const grow = () => { q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; };
   q.addEventListener('input', grow);
   q.addEventListener('keydown', (e) => {
@@ -1152,9 +1170,10 @@ class AskViewProvider {
     if (m.type !== 'state') return;
     const busy = m.state === 'naming' || m.state === 'launching';
     q.disabled = busy;
-    hint.textContent = m.state === 'naming' ? 'Naming session…'
-      : m.state === 'launching' ? 'Starting Claude…' : IDLE;
-    if (m.state === 'idle') { q.value = ''; grow(); q.focus(); }
+    bar.classList.toggle('on', busy);
+    if (m.state === 'naming') startTick('Naming session…');
+    else if (m.state === 'launching') startTick('Starting Claude…');
+    else { stopTick(); hint.textContent = IDLE; q.value = ''; grow(); q.focus(); }
   });
 </script></body></html>`;
   }
