@@ -608,6 +608,27 @@ function launchClaudeTmux(fav, resumeArg, initialPrompt) {
   return terminal;
 }
 
+// The attach half of a dtach launch, also used on its own to grab a session
+// somebody else's master already runs (the Asana bridge's, say).
+// -E: no detach escape char; -z: pass Ctrl-Z through; -r winch: redraw on attach.
+// Piped through dtdrain (when available) so a flow-control-paused terminal can't
+// back-pressure the master and stall Claude — see dtdrainBin(). dtach does its tty
+// work on stdin, so piping stdout is safe.
+function dtachAttachCmd(socket) {
+  const relay = dtdrainBin();
+  return `dtach -a ${JSON.stringify(socket)} -E -z -r winch` + (relay ? ` | ${JSON.stringify(relay)}` : '');
+}
+
+// Steal semantics: kill any attach client already on this socket before we attach,
+// so grabbing a session from another window/machine moves it here instead of
+// mirroring input into both (the old window's client drops back to its shell
+// prompt; the master — and Claude — are untouched). A fresh launch has no clients
+// yet, so the pkill is a no-op there. Must run before our own attach starts, so it
+// can't kill it.
+function dtachStealCmd(socket) {
+  return `pkill -f ${JSON.stringify('dtach -a ' + socket)} 2>/dev/null`;
+}
+
 function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   const dir = fav.path;
   const c = cfg();
@@ -642,23 +663,12 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   // which parents the master under the interactive client. `dtach -n` is a harmless
   // no-op (errors, swallowed) when the session is already live, so re-opening just
   // re-attaches and the trailing `dtach -a` always fires a fresh -r winch redraw.
-  // -E: no detach escape char; -z: pass Ctrl-Z through; -r winch: redraw on attach.
   // Only the `dtach -n` master (which holds Claude) goes into claude.slice; the
   // trailing `dtach -a` attach client is a thin, short-lived terminal-side client
   // and is left in place. sliceWrapShell() is '' when the user manager is absent.
-  // The attach client is piped through dtdrain (when available) so a flow-control
-  // -paused terminal can't back-pressure the master and stall Claude — see
-  // dtdrainBin(). dtach does its tty work on stdin, so piping stdout is safe.
   const sock = JSON.stringify(socket);
-  const relay = dtdrainBin();
-  const attach = `dtach -a ${sock} -E -z -r winch` + (relay ? ` | ${JSON.stringify(relay)}` : '');
-  // Steal semantics: kill any attach client already on this socket before we
-  // attach, so grabbing a session from another window/machine moves it here
-  // instead of mirroring input into both (the old window's client drops back to
-  // its shell prompt; the master — and Claude — are untouched). A fresh launch
-  // has no clients yet, so the pkill is a no-op there. Runs before our own
-  // attach starts, so it can't kill it.
-  const steal = `pkill -f ${JSON.stringify('dtach -a ' + socket)} 2>/dev/null`;
+  const attach = dtachAttachCmd(socket);
+  const steal = dtachStealCmd(socket);
   // Leading space keeps this internal launch line out of ~/.bash_history: bash's
   // ignorespace (set via HISTCONTROL=ignoreboth in the default .bashrc the interactive
   // terminal sources) drops space-prefixed commands from the history list. It's our
@@ -1579,11 +1589,16 @@ async function resumeSessionNode(node) {
 
 // ─── agent sessions (Asana → Claude bridge) ───────────────────────────────────
 //
-// The bridge spawns each picked-up task as an INTERACTIVE claude inside a
-// detached tmux session (on a dedicated -L socket) and records it in an index
-// file. These sessions run in the background — outside VS Code — so they never
-// appear in "Running Sessions". This view surfaces them: 🟢 live ones attach
-// (reconnect to the running process), ⚫ ended ones resume from the transcript.
+// The bridge spawns each picked-up task as an INTERACTIVE claude in a detached
+// session and records it in an index file. These sessions run in the background
+// — outside VS Code — so they never appear in "Running Sessions". This view
+// surfaces them: 🟢 live ones attach (reconnect to the running process),
+// ⚫ ended ones resume from the transcript.
+//
+// Two backends coexist. The bridge (and this extension's own useDtach launches)
+// use a per-session `dtach` socket keyed by session id; the extension's useTmux
+// launches use a named tmux session on the agent socket and carry a `tmuxName`.
+// An entry's `tmuxName` is what tells the two apart — bridge entries have none.
 
 function expandHome(p) {
   if (!p) return p;
@@ -1618,6 +1633,81 @@ function tmuxAlive(name) {
   } catch { return false; }
 }
 
+// Is the session behind this entry still running? tmux-backed entries ask tmux;
+// dtach-backed ones (everything the bridge writes) go by the socket, which is
+// exactly how the bridge itself defines liveness — it unlinks the socket when it
+// kills a session, and dtach removes it when the process exits.
+function agentLive(entry) {
+  if (!entry) return false;
+  if (entry.tmuxName) return tmuxAlive(entry.tmuxName);
+  return !!(entry.sessionId && sessionDtachSocket(entry.sessionId));
+}
+
+// Our own history of agent sessions, kept beside the bridge's index. The index is
+// a LIVE registry, not a log: the bridge's reapEnded() deletes an entry the moment
+// its socket goes away, so a finished session would vanish from this view within a
+// minute of ending — taking the "⚫ ended ones resume from the transcript" half of
+// the view with it. Everything we ever see in the index is mirrored here and kept
+// serving after the bridge drops it. The index stays read-mostly: the bridge owns it.
+function agentHistoryFile() {
+  const index = agentIndexFile();
+  // Deliberately not a prefix of the index file name — the watcher in activate()
+  // refreshes on anything starting with it, and this file is written from inside
+  // that refresh.
+  return path.join(path.dirname(index), 'agent-sessions-history.json');
+}
+
+function readAgentHistory() {
+  try {
+    const data = JSON.parse(fs.readFileSync(agentHistoryFile(), 'utf8'));
+    return Array.isArray(data.sessions) ? data.sessions : [];
+  } catch { return []; }
+}
+
+function writeAgentHistory(sessions) {
+  const file = agentHistoryFile();
+  const tmp = `${file}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify({ sessions }, null, 2));
+    fs.renameSync(tmp, file);
+  } catch (e) { console.error(`Claude Code Helper: failed to write ${file} — ${e.message}`); }
+}
+
+// Index ∪ history, index winning on conflicts (it carries the fresher resumedAt).
+// Ended entries age out on the same clock as Recent Sessions; a running one never
+// ages out. Rewrites the history file only when the merge actually changed it.
+function agentSessions() {
+  const history = readAgentHistory();
+  const byId = new Map();
+  for (const e of history) if (e && e.sessionId) byId.set(e.sessionId, e);
+  for (const e of readAgentIndex()) {
+    if (e && e.sessionId) byId.set(e.sessionId, { ...byId.get(e.sessionId), ...e });
+  }
+  const maxAgeMs = (cfg().get('sessionsMaxAgeDays', 7) || 7) * 24 * 3600 * 1000;
+  const cutoff = Date.now() - maxAgeMs;
+  const merged = [...byId.values()].filter((e) => {
+    if (agentLive(e)) return true;
+    const seen = Date.parse(e.resumedAt || e.createdAt || '');
+    return !Number.isFinite(seen) || seen >= cutoff;
+  });
+  const before = JSON.stringify(history);
+  const after = JSON.stringify(merged);
+  if (before !== after) writeAgentHistory(merged);
+  return merged;
+}
+
+// Forget an agent session: drop it from our history, and from the bridge's index
+// too when it is no longer running (a live entry is the bridge's — deleting it
+// would make the bridge believe the task has no session and spawn a second one).
+function forgetAgentSession(entry) {
+  if (!entry || !entry.sessionId) return;
+  writeAgentHistory(readAgentHistory().filter((s) => s.sessionId !== entry.sessionId));
+  if (agentLive(entry)) return;
+  const index = readAgentIndex();
+  const kept = index.filter((s) => s.sessionId !== entry.sessionId);
+  if (kept.length !== index.length) writeAgentIndex(kept);
+}
+
 function agentSessionFile(entry) {
   return path.join(os.homedir(), '.claude', 'projects', encodeProjectDir(entry.dir), `${entry.sessionId}.jsonl`);
 }
@@ -1628,7 +1718,9 @@ function buildAgentTooltip(entry, live, meta) {
   const metaLines = [];
   metaLines.push(`📁 \`${entry.dir}\``);
   if (entry.permalink) metaLines.push(`🔗 ${entry.permalink}`);
-  metaLines.push(`🖥️ \`tmux -L ${agentSocket()} attach -t ${entry.tmuxName}\``);
+  metaLines.push(entry.tmuxName
+    ? `🖥️ \`tmux -L ${agentSocket()} attach -t ${entry.tmuxName}\``
+    : `🖥️ \`dtach -a ${path.join(dtachSocketDir(), entry.sessionId + '.sock')} -E -z -r winch\``);
   metaLines.push(`🆔 \`${entry.sessionId}\``);
   metaLines.push(live ? '🟢 running' : '⚫ ended');
   if (entry.createdAt) metaLines.push(`🕐 started ${new Date(entry.createdAt).toLocaleString()}`);
@@ -1693,7 +1785,7 @@ class AgentSessionsProvider {
     return item;
   }
   getChildren() {
-    const all = readAgentIndex();
+    const all = agentSessions();
     const q = this._filter.toLowerCase();
     const entries = q ? all.filter((e) => this._matches(e, q)) : all;
     if (this.view) {
@@ -1701,7 +1793,7 @@ class AgentSessionsProvider {
         ? `Filter “${this._filter}” — ${entries.length} of ${all.length} session${all.length === 1 ? '' : 's'}`
         : undefined;
     }
-    const nodes = entries.map((entry) => ({ entry, live: tmuxAlive(entry.tmuxName) }));
+    const nodes = entries.map((entry) => ({ entry, live: agentLive(entry) }));
     // live first, then most-recently started
     nodes.sort((a, b) => (b.live - a.live) || (String(b.entry.createdAt).localeCompare(String(a.entry.createdAt))));
     return nodes;
@@ -1711,7 +1803,9 @@ class AgentSessionsProvider {
 function attachAgentSession(node) {
   if (!node || !node.entry) return;
   const e = node.entry;
-  if (!tmuxAlive(e.tmuxName)) {
+  // Re-checked at click time, not taken from render time: the session may have
+  // ended in the meantime, in which case resuming from the transcript is correct.
+  if (!agentLive(e)) {
     vscode.window.showWarningMessage(`Agent session "${e.displayName}" is no longer running — resuming instead.`);
     return resumeAgentSession(node);
   }
@@ -1719,7 +1813,15 @@ function attachAgentSession(node) {
   let terminal = vscode.window.terminals.find((t) => t.name === name);
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: fs.existsSync(e.dir) ? e.dir : undefined });
   terminal.show();
-  terminal.sendText(`tmux -L ${agentSocket()} attach -t ${e.tmuxName}`);
+  if (e.tmuxName) {
+    terminal.sendText(`tmux -L ${agentSocket()} attach -t ${e.tmuxName}`);
+  } else {
+    // Attach only — no `dtach -n`, and above all no rewrite of the session's
+    // .run-claude.sh: the master is the bridge's, still running its own runner.
+    const socket = path.join(dtachSocketDir(), e.sessionId + '.sock');
+    terminal.sendText(` ${dtachStealCmd(socket)}; ${dtachAttachCmd(socket)}`);
+  }
+  registerSessionTerminal(e.sessionId, terminal);
 }
 
 async function resumeAgentSession(node) {
@@ -1737,8 +1839,7 @@ let sessProvider; // module-level so launchClaude can nudge Recent Sessions afte
 
 function removeAgentEntry(node) {
   if (!node || !node.entry) return;
-  const sessions = readAgentIndex().filter((s) => s.tmuxName !== node.entry.tmuxName);
-  writeAgentIndex(sessions);
+  forgetAgentSession(node.entry);
   agentProvider.refresh();
 }
 
@@ -2221,8 +2322,20 @@ function activate(context) {
       `Kill agent session "${node.entry.displayName}"? The claude process will stop.`, { modal: true }, 'Kill'
     );
     if (c !== 'Kill') return;
-    try { cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', node.entry.tmuxName]); } catch {}
-    removeAgentEntry(node);
+    const e = node.entry;
+    if (e.tmuxName) {
+      try { cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', e.tmuxName]); } catch {}
+    } else if (e.sessionId) {
+      // Same reach as the bridge's own killSession: the session id appears both in
+      // the dtach master's socket-path arg and in claude's --session-id, so one
+      // pattern takes down master and process; then drop the socket, which is what
+      // both sides read as "dead".
+      try { cp.spawnSync('pkill', ['-f', e.sessionId]); } catch {}
+      try { fs.unlinkSync(path.join(dtachSocketDir(), e.sessionId + '.sock')); } catch {}
+    }
+    // Killed, not forgotten: the row stays as ⚫ ended and is still resumable from
+    // its transcript. "Remove from List" is the gesture that drops it for good.
+    agentProvider.refresh();
   });
   reg('claudeHelper.removeAgentSession', (node) => removeAgentEntry(node));
 
