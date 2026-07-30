@@ -666,6 +666,17 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   // Only the `dtach -n` master (which holds Claude) goes into claude.slice; the
   // trailing `dtach -a` attach client is a thin, short-lived terminal-side client
   // and is left in place. sliceWrapShell() is '' when the user manager is absent.
+  // A leftover socket file also blocks the master from starting: `dtach -n` binds
+  // the path and fails with EADDRINUSE if a file is sitting on it (verified — dtach
+  // does not clean up after itself), the launch line's 2>/dev/null swallows that,
+  // and the attach behind it reports "Connection refused". Harmless while the
+  // session really is live (the -n is a deliberate no-op and we just re-attach),
+  // fatal for resuming one whose master died: a resume keeps the session id, so it
+  // keeps the socket path, so the master can never come back. Drop the file when
+  // nothing is listening on it — which is also what the Asana bridge reads as dead.
+  if (fs.existsSync(socket) && !sessionDtachSocket(id)) {
+    try { fs.unlinkSync(socket); } catch { /* raced with a real master — leave it */ }
+  }
   const sock = JSON.stringify(socket);
   const attach = dtachAttachCmd(socket);
   const steal = dtachStealCmd(socket);
@@ -1419,13 +1430,41 @@ function sessionAttachedHere(id) {
   return !!t && vscode.window.terminals.includes(t);
 }
 
+// Sockets that still have a dtach process behind them. The socket *file* outlives
+// its master — it sits in ~/.claude/dtach on disk, so a reboot or a SIGKILLed
+// master leaves the file there and mere existence keeps reporting a long-dead
+// session as 🟢 running. Clicking one then hands the terminal an attach that can
+// only answer `dtach: …: Connection refused` (seen after the box rebooted
+// overnight, 2026-07-30). Liveness is a *listener*, so ask ps who is holding the
+// socket. Matched on comm=dtach so the shells, pkills and launch lines that merely
+// mention the path don't count; a `dtach -a` client counts, since a client can
+// only exist while its master does. Cached briefly — the tree asks per row.
+let dtachLiveSockets = { at: 0, set: null };
+function liveDtachSocketPaths() {
+  if (dtachLiveSockets.set && Date.now() - dtachLiveSockets.at < 2000) return dtachLiveSockets.set;
+  const set = new Set();
+  try {
+    const out = cp.execSync('ps -e -o comm=,args=', { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+    for (const line of out.split('\n')) {
+      if (!/^dtach\s/.test(line)) continue;
+      for (const m of line.matchAll(/\S+\.sock/g)) set.add(m[0]);
+    }
+  } catch { return null; } // ps unavailable — callers fall back to file existence
+  dtachLiveSockets = { at: Date.now(), set };
+  return set;
+}
+
 // The dtach socket a live session can be re-attached through, or null. Only
 // dtach launches are grabbable cross-window from Recent Sessions: tmux launches
 // live in the agent index (reachable in any window via Agent Sessions), and
 // plain-terminal launches have no master to attach to.
 function sessionDtachSocket(id) {
   const sock = path.join(dtachSocketDir(), id + '.sock');
-  try { return fs.existsSync(sock) ? sock : null; } catch { return null; }
+  try {
+    if (!fs.existsSync(sock)) return null;
+    const live = liveDtachSocketPaths();
+    return !live || live.has(sock) ? sock : null;
+  } catch { return null; }
 }
 
 // Two same-titled sessions living in different folders are indistinguishable in
