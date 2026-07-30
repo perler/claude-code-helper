@@ -1,0 +1,308 @@
+- application [ref=f4e2]:
+  - generic [ref=f4e6]:
+    - generic [ref=f4e8]:
+      - toolbar [ref=f4e16]:
+        - button "Go Back (Ctrl+Alt+-)" [disabled] [ref=f4e17]: 
+        - button "Go Forward (Ctrl+Shift+-)" [disabled] [ref=f4e18]: 
+        - listitem [ref=f4e19] [cursor=pointer]:
+          - toolbar [ref=f4e22]:
+            - button "work - code-server" [ref=f4e23]
+      - toolbar "Title actions" [ref=f4e29]:
+        - button "Customize Layout..." [ref=f4e30] [cursor=pointer]: 
+        - button "Toggle Primary Side Bar (Ctrl+B)" [pressed] [ref=f4e31] [cursor=pointer]: 
+        - button "Toggle Panel (Ctrl+J)" [ref=f4e32] [cursor=pointer]: 
+        - button "Toggle Secondary Side Bar (Ctrl+Alt+B)" [pressed] [ref=f4e33] [cursor=pointer]: 
+    - generic [ref=f4e39]:
+      - generic [ref=f4e41]:
+        - tablist "Active View Switcher" [ref=f4e44]:
+          - tab "Explorer (Ctrl+Shift+E)" [ref=f4e45] [cursor=pointer]:
+            - generic "Explorer (Ctrl+Shift+E)" [ref=f4e46]: 
+          - tab "Search (Ctrl+Shift+F)" [ref=f4e47] [cursor=pointer]:
+            - generic "Search (Ctrl+Shift+F)" [ref=f4e48]: 
+          - tab "Source Control (Ctrl+Shift+G)" [ref=f4e49] [cursor=pointer]:
+            - generic "Source Control (Ctrl+Shift+G)" [ref=f4e50]: 
+          - tab "Run and Debug (Ctrl+Shift+D)" [ref=f4e51] [cursor=pointer]:
+            - generic "Run and Debug (Ctrl+Shift+D)" [ref=f4e52]: 
+          - tab "Extensions (Ctrl+Shift+X)" [ref=f4e53] [cursor=pointer]:
+            - generic "Extensions (Ctrl+Shift+X)" [ref=f4e54]: 
+          - tab "Claude Code" [ref=f4e55] [cursor=pointer]
+          - tab "Claude Code Helper" [expanded] [selected] [ref=f4e57] [cursor=pointer]
+        - toolbar "Manage" [ref=f4e61]:
+          - button "Accounts" [ref=f4e62] [cursor=pointer]:
+            - generic "Accounts" [ref=f4e63]: 
+          - button "Manage" [ref=f4e64] [cursor=pointer]:
+            - generic "Manage" [ref=f4e65]: 
+      - generic [ref=f4e66]:
+        - generic [ref=f4e67]:
+          - heading "Claude Code Helper" [level=2] [ref=f4e322]
+          - toolbar "Claude Code Helper actions" [ref=f4e323]:
+            - button "Views and More Actions..." [ref=f4e326] [cursor=pointer]: 
+          - generic:
+            - generic:
+              - generic:
+                - toolbar
+        - generic [ref=f4e330]:
+          - button "New Task Section" [expanded] [ref=f4e333] [cursor=pointer]:
+            - generic [ref=f4e334]: 
+            - heading "New Task" [level=3] [ref=f4e335]
+            - generic:
+              - generic:
+                - generic:
+                  - toolbar "New Task actions"
+          - generic [ref=f4e338]:
+            - button "Favourites Section" [expanded] [ref=f4e339] [cursor=pointer]:
+              - generic [ref=f4e340]: 
+              - heading "Favourites" [level=3] [ref=f4e341]
+              - text:   
+            - region "Welcome" [ref=f4e344]:
+              - paragraph [ref=f4e345]: No favourites yet.
+              - button "Add Favourite" [ref=f4e347] [cursor=pointer]
+              - button "Add Current Workspace" [ref=f4e350] [cursor=pointer]
+          - generic [ref=f4e355]:
+            - button "Running Sessions Section" [expanded] [ref=f4e356] [cursor=pointer]:
+              - generic [ref=f4e357]: 
+              - heading "Running Sessions" [level=3] [ref=f4e358]
+              - text:  
+            - region "Welcome" [ref=f4e361]:
+              - paragraph [ref=f4e362]: No open terminals.
+              - button "New Terminal" [ref=f4e364] [cursor=pointer]
+          - generic [ref=f4e367]:
+            - button "Agent Sessions Section" [expanded] [ref=f4e368] [cursor=pointer]:
+              - generic [ref=f4e369]: 
+              - heading "Agent Sessions" [level=3] [ref=f4e370]
+              - text:  
+            - tree "Agent Sessions" [ref=f4e374]:
+              - generic [ref=f4e375]:
+                - treeitem "sicherheitswarnung-b 🟢 ~/clients/PR/sicherheitswarnung-b, has actions" [level=1] [ref=f4e376] [cursor=pointer]:
+                  - generic "sicherheitswarnung-b" [ref=f4e379]:
+                    - generic [ref=f4e381]:
+                      - generic [ref=f4e382]: sicherheitswarnung-b
+                      - generic [ref=f4e384]: 🟢 ~/clients/PR/sicherheitswarnung-b
+                    - text:  
+                - treeitem "ui-test-himeru 🟢 ~/clients/EEB/ui-test-himeru, has actions" [level=1] [ref=f4e385] [cursor=pointer]:
+                  - generic "ui-test-himeru" [ref=f4e388]:
+                    - generic [ref=f4e390]:
+                      - generic [ref=f4e391]: ui-test-himeru
+                      - generic [ref=f4e393]: 🟢 ~/clients/EEB/ui-test-himeru
+                    - text:  
+                - treeitem "duplicacy-srv002-stp ⚫ ~/clients/STPH/duplicacy-srv002-stp, has actions" [level=1] [ref=f4e394] [cursor=pointer]:
+                  - generic "duplicacy-srv002-stp" [ref=f4e397]:
+                    - generic [ref=f4e399]:
+                      - generic [ref=f4e400]: duplicacy-srv002-stp
+                      - generic [ref=f4e402]: ⚫ ~/clients/STPH/duplicacy-srv002-stp
+                    - text:  
+                - treeitem "duplicacy-srv003-lth ⚫ ~/clients/LTHX/duplicacy-srv003-lth, has actions" [level=1] [ref=f4e403] [cursor=pointer]:
+                  - generic "duplicacy-srv003-lth" [ref=f4e406]:
+                    - generic [ref=f4e408]:
+                      - generic [ref=f4e409]: duplicacy-srv003-lth
+                      - generic [ref=f4e411]: ⚫ ~/clients/LTHX/duplicacy-srv003-lth
+                    - text:  
+                - treeitem "enhance-mail-skill-w ⚫ ~/clients/_INBOX/enhance-mail-skill-w, has actions" [level=1] [ref=f4e412] [cursor=pointer]:
+                  - generic "enhance-mail-skill-w" [ref=f4e415]:
+                    - generic [ref=f4e417]:
+                      - generic [ref=f4e418]: enhance-mail-skill-w
+                      - generic [ref=f4e420]: ⚫ ~/clients/_INBOX/enhance-mail-skill-w
+                    - text:  
+                - treeitem "gam-autoupdate ⚫ ~/clients/_INBOX/gam-autoupdate, has actions" [level=1] [ref=f4e421] [cursor=pointer]:
+                  - generic "gam-autoupdate" [ref=f4e424]:
+                    - generic [ref=f4e426]:
+                      - generic [ref=f4e427]: gam-autoupdate
+                      - generic [ref=f4e429]: ⚫ ~/clients/_INBOX/gam-autoupdate
+                    - text:  
+          - generic [ref=f4e433]:
+            - button "Recent Sessions Section" [expanded] [ref=f4e434] [cursor=pointer]:
+              - generic [ref=f4e435]: 
+              - heading "Recent Sessions" [level=3] [ref=f4e436]
+              - text:   
+            - tree "Recent Sessions" [ref=f4e440]:
+              - generic [ref=f4e441]:
+                - treeitem "Last hour 7" [expanded] [level=1] [ref=f4e442] [cursor=pointer]:
+                  - generic [ref=f4e443]:
+                    - generic [ref=f4e444]: 
+                    - generic "Last hour" [ref=f4e446]:
+                      - generic [ref=f4e447]:
+                        - generic [ref=f4e448]: Last hour
+                        - generic [ref=f4e450]: "7"
+                - treeitem "projects/claude-code-helper 🟢 6s ago, has actions" [level=2] [ref=f4e451] [cursor=pointer]:
+                  - generic "projects/claude-code-helper" [ref=f4e454]:
+                    - generic [ref=f4e455]: 
+                    - generic [ref=f4e456]:
+                      - generic [ref=f4e457]: projects/claude-code-helper
+                      - generic [ref=f4e459]: 🟢 6s ago
+                    - text: 
+                - treeitem "tasks/account-locked 🟢 1m ago, has actions" [level=2] [ref=f4e460] [cursor=pointer]:
+                  - generic "tasks/account-locked" [ref=f4e463]:
+                    - generic [ref=f4e464]: 
+                    - generic [ref=f4e465]:
+                      - generic [ref=f4e466]: tasks/account-locked
+                      - generic [ref=f4e468]: 🟢 1m ago
+                    - text: 
+                - treeitem "DS/LocalAI 🟢 2m ago, has actions" [level=2] [ref=f4e469] [cursor=pointer]:
+                  - generic "DS/LocalAI" [ref=f4e472]:
+                    - generic [ref=f4e473]: 
+                    - generic [ref=f4e474]:
+                      - generic [ref=f4e475]: DS/LocalAI
+                      - generic [ref=f4e477]: 🟢 2m ago
+                    - text: 
+                - treeitem "PR/sicherheitswarnung-b 🟢 4m ago, has actions" [level=2] [ref=f4e478] [cursor=pointer]:
+                  - generic "PR/sicherheitswarnung-b" [ref=f4e481]:
+                    - generic [ref=f4e482]: 
+                    - generic [ref=f4e483]:
+                      - generic [ref=f4e484]: PR/sicherheitswarnung-b
+                      - generic [ref=f4e486]: 🟢 4m ago
+                    - text: 
+                - treeitem "//tmp 6m ago, has actions" [level=2] [ref=f4e487] [cursor=pointer]:
+                  - generic "//tmp" [ref=f4e490]:
+                    - generic [ref=f4e491]: 
+                    - generic [ref=f4e492]:
+                      - generic [ref=f4e493]: //tmp
+                      - generic [ref=f4e495]: 6m ago
+                    - text: 
+          - generic [ref=f4e497]:
+            - button "Bookmarks Section" [expanded] [ref=f4e498] [cursor=pointer]:
+              - generic [ref=f4e499]: 
+              - heading "Bookmarks" [level=3] [ref=f4e500]
+              - text:   
+            - tree "Bookmarks" [ref=f4e504]:
+              - generic [ref=f4e505]:
+                - treeitem "https://infra.patsplanet.dev/?k=03dd17be92fd93f1fd4b37ad9412910c515c59483b31294d, has actions" [level=1] [ref=f4e506] [cursor=pointer]:
+                  - generic "https://infra.patsplanet.dev/?k=03dd17be92fd93f1fd4b37ad9412910c515c59483b31294d" [ref=f4e509]:
+                    - generic [ref=f4e510]: 
+                    - generic [ref=f4e511]:
+                      - generic [ref=f4e512]: Infra Panel
+                      - generic [ref=f4e514]: https://infra.patsplanet.dev/?k=03dd17be92fd93f1fd4b37ad9412910c515c59483b31294d
+                    - text:  
+                - treeitem "https://cockpit.himeru.dev/, has actions" [level=1] [ref=f4e515] [cursor=pointer]:
+                  - generic "https://cockpit.himeru.dev/" [ref=f4e518]:
+                    - generic [ref=f4e519]: 
+                    - generic [ref=f4e520]:
+                      - generic [ref=f4e521]: himeru Cockpit
+                      - generic [ref=f4e523]: https://cockpit.himeru.dev/
+                    - text:  
+                - treeitem "https://tippapp-cockpit.patsplanet.dev/auto?k=0f392e6fca9c48a7faef61717673bf9c27d33ac1dc91e3ca, has actions" [level=1] [ref=f4e524] [cursor=pointer]:
+                  - generic "https://tippapp-cockpit.patsplanet.dev/auto?k=0f392e6fca9c48a7faef61717673bf9c27d33ac1dc91e3ca" [ref=f4e527]:
+                    - generic [ref=f4e528]: 
+                    - generic [ref=f4e529]:
+                      - generic [ref=f4e530]: TippApp Cockpit
+                      - generic [ref=f4e532]: https://tippapp-cockpit.patsplanet.dev/auto?k=0f392e6fca9c48a7faef61717673bf9c27d33ac1dc91e3ca
+                    - text:  
+                - treeitem "https://ai.patsplanet.com/proxy/6080/vnc.html?autoconnect=1&resize=scale&path=proxy/6080/websockify&password=ioMZAEC%21, has actions" [level=1] [ref=f4e533] [cursor=pointer]:
+                  - generic "https://ai.patsplanet.com/proxy/6080/vnc.html?autoconnect=1&resize=scale&path=proxy/6080/websockify&password=ioMZAEC%21" [ref=f4e536]:
+                    - generic [ref=f4e537]: 
+                    - generic [ref=f4e538]:
+                      - generic [ref=f4e539]: Browser Agent (noVNC)
+                      - generic [ref=f4e541]: https://ai.patsplanet.com/proxy/6080/vnc.html?autoconnect=1&resize=scale&path=proxy/6080/websockify&password=ioMZAEC%21
+                    - text:  
+      - main [ref=f4e237]:
+        - generic "Editor Group 1 (empty)" [ref=f4e245]:
+          - generic [ref=f4e246]:
+            - generic [ref=f4e247]:
+              - generic:
+                - generic:
+                  - toolbar
+            - generic [ref=f4e252]:
+              - generic [ref=f4e253]:
+                - term [ref=f4e254]: Show All Commands
+                - definition [ref=f4e255]:
+                  - generic "Control+Shift+P" [ref=f4e256]:
+                    - generic [ref=f4e257]: Ctrl
+                    - generic [ref=f4e258]: +
+                    - generic [ref=f4e259]: Shift
+                    - generic [ref=f4e260]: +
+                    - generic [ref=f4e261]: P
+              - generic [ref=f4e262]:
+                - term [ref=f4e263]: Open Settings
+                - definition [ref=f4e264]:
+                  - generic "Control+," [ref=f4e265]:
+                    - generic [ref=f4e266]: Ctrl
+                    - generic [ref=f4e267]: +
+                    - generic [ref=f4e268]: ","
+              - generic [ref=f4e269]:
+                - term [ref=f4e270]: Go to File
+                - definition [ref=f4e271]:
+                  - generic "Control+P" [ref=f4e272]:
+                    - generic [ref=f4e273]: Ctrl
+                    - generic [ref=f4e274]: +
+                    - generic [ref=f4e275]: P
+      - generic [ref=f4e276]:
+        - generic [ref=f4e277]:
+          - tablist "Active View Switcher" [ref=f4e281]:
+            - tab "Claude Code" [expanded] [selected] [ref=f4e282] [cursor=pointer]
+          - generic [ref=f4e284]:
+            - generic:
+              - generic:
+                - toolbar "Claude Code actions"
+          - toolbar [ref=f4e288]:
+            - button "Maximize Secondary Side Bar" [ref=f4e289] [cursor=pointer]: 
+            - button "Hide Secondary Side Bar (Ctrl+Alt+B)" [ref=f4e290] [cursor=pointer]: 
+        - generic [ref=f4e291]: 
+    - status [ref=f4e300]:
+      - generic [ref=f4e301]:
+        - generic "remote" [ref=f4e302]:
+          - button "remote" [ref=f4e303] [cursor=pointer]:
+            - generic [ref=f4e304]: 
+        - generic "No Problems" [ref=f4e305]:
+          - button "No Problems" [ref=f4e306] [cursor=pointer]:
+            - generic [ref=f4e307]: 
+            - text: "0"
+            - generic [ref=f4e308]: 
+            - text: "0"
+        - generic "No Ports Forwarded" [ref=f4e309]:
+          - button "No Ports Forwarded" [ref=f4e310] [cursor=pointer]:
+            - generic [ref=f4e311]: 
+            - text: "0"
+        - 'generic "Claude: naming session…" [ref=f4e544]':
+          - 'button "Claude: naming session…" [ref=f4e545] [cursor=pointer]':
+            - generic [ref=f4e546]: 
+            - text: "Claude: naming session…"
+      - generic [ref=f4e312]:
+        - generic "Notifications" [ref=f4e313]:
+          - button "Notifications" [ref=f4e314] [cursor=pointer]:
+            - generic [ref=f4e547]: 
+        - 'generic "Layout: us" [ref=f4e316]':
+          - 'button "Layout: us" [ref=f4e317] [cursor=pointer]'
+        - generic "Screen Reader Optimized" [ref=f4e318]:
+          - button "Screen Reader Optimized" [ref=f4e319] [cursor=pointer]
+  - generic:
+    - alert
+    - alert
+  - iframe [ref=f4e321]:
+    - document [ref=f6e1]:
+      - iframe [ref=f6e2]:
+        - document [ref=f8e1]:
+          - generic [ref=f8e4]:
+            - generic [ref=f8e5]:
+              - button "Untitled" [ref=f8e7]
+              - button "Session history" [ref=f8e10] [cursor=pointer]
+              - button "New session" [ref=f8e13] [cursor=pointer]
+            - generic [ref=f8e19]:
+              - generic [ref=f8e21]:
+                - generic [ref=f8e36]:
+                  - generic [ref=f8e37]: What to do first? Ask about this codebase or we can start writing code.
+                  - generic [ref=f8e42]:
+                    - generic [ref=f8e43]:
+                      - generic [ref=f8e44]: Fable 5 is now a standard part of your Max plan
+                      - button "Close" [ref=f8e45] [cursor=pointer]
+                    - paragraph [ref=f8e51]:
+                      - text: "You can use up to 50% of your weekly usage limit on Fable 5. If you hit your limit, you can continue on Fable 5 with usage credits. Fable 5 draws down usage faster than Opus 4.8. Run /model and select Fable to use it. Learn more:"
+                      - link "https://support.claude.com/en/articles/15424964-claude-fable-5-promotional-access" [ref=f8e52] [cursor=pointer]:
+                        - /url: https://support.claude.com/en/articles/15424964-claude-fable-5-promotional-access
+                - generic [ref=f8e54]:
+                  - generic [ref=f8e60]:
+                    - text: Prefer the Terminal experience?
+                    - link "Switch back in Settings." [ref=f8e61] [cursor=pointer]:
+                      - /url: "#"
+                  - button "Close banner" [ref=f8e62] [cursor=pointer]
+              - group [ref=f8e69]:
+                - textbox "Message input" [ref=f8e72]: Ask Claude to edit…
+                - generic [ref=f8e73]:
+                  - button "Add" [ref=f8e75] [cursor=pointer]
+                  - button "Show command menu (/)" [ref=f8e78] [cursor=pointer]
+                  - button "Claude will ask for approval before making each edit. Click to change, or press Shift+Tab to cycle." [ref=f8e82] [cursor=pointer]
+                  - button [disabled] [ref=f8e85]
+  - iframe [active] [ref=f4e543]:
+    - document [ref=f9e1]:
+      - iframe [active] [ref=f9e2]:
+        - document [active] [ref=f11e1]:
+          - textbox "Ask Claude…" [disabled] [ref=f11e2]: "focus test: reply with exactly focus-test-ok and nothing else"
+          - generic [ref=f11e3]: Naming session… 0s

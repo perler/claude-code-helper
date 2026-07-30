@@ -1,0 +1,291 @@
+[    1772ms] [LOG] %c INFO color: #33f Resolving connection token (127.0.0.1:8083)... @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    1781ms] [LOG] %c INFO color: #33f Resolved connection token (127.0.0.1:8083) after 9 ms @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    1788ms] [LOG] %c INFO color: #33f Creating a socket (renderer-Management-939811bc-1b76-41c0-80a1-7c567429ba36)... @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    1891ms] [LOG] %c INFO color: #33f Creating a socket (renderer-Management-939811bc-1b76-41c0-80a1-7c567429ba36) was successful after 104 ms. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    1981ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/node_modules/vsda/rust/web/vsda_bg.wasm:0
+[    1992ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/node_modules/vsda/rust/web/vsda.js:0
+[    2011ms] [LOG] %c INFO color: #33f [reconnection-grace-time] Client received grace time from server: 10800000ms (10800s) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    2485ms] [WARNING] The web worker extension host is started in a same-origin iframe! @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5086
+[    2495ms] [LOG] %c INFO color: #33f Creating a socket (renderer-ExtensionHost-1d5af355-477a-4da1-9284-4046cee78dff)... @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    2549ms] [LOG] %c INFO color: #33f [Service Worker] registered @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    2626ms] [LOG] %c INFO color: #33f Creating a socket (renderer-ExtensionHost-1d5af355-477a-4da1-9284-4046cee78dff) was successful after 131 ms. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    2641ms] [LOG] %c INFO color: #33f [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    2663ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html?&vscodeWebWorkerExtHostId=6969ef29-2215-4d53-a7a3-ebe7f7f329fd:0
+[    2788ms] [LOG] %c INFO color: #33f [AgentHost:remote] Initializing (enabled=false, remoteAuthority=127.0.0.1:8083) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    2788ms] [LOG] %c INFO color: #33f [AgentHost:remote] Disabled via "chat.agentHost.enabled" or web runtime. Not connecting. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    3134ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5130
+[    3509ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/contrib/webview/browser/pre/index.html?id=2c973023-df47-49ee-ae99-4fcbfb352037&parentId=1&origin=13694ee0-12ab-4b8d-9adb-2982013dcd95&swVersion=5&extensionId=Anthropic.claude-code&platform=browser&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=http%3A%2F%2F127.0.0.1%3A8083&remoteAuthority=127.0.0.1%3A8083&purpose=webviewView:0
+[    4149ms] [ERROR] %c  ERR color: #f33 navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:7243)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:9615
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:9929
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:10192
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:11115
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:15:849
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:22:1115
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:1896
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:5127
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:5656
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at Object.<anonymous> (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:120:277)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1355:12)
+    at i._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:6622)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:683:28855)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:675:25939)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at SP._doLoadModule (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:686:2062)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    4150ms] [ERROR] %c  ERR color: #f33 navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:7243)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:18270
+    at get value (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:16988)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:188:199
+    at $ZodObject.n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:14781)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:190:11641
+    at n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:14781)
+    at new ZodObject (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:15045)
+    at $i (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:190:12527)
+    at Object.<anonymous> (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:247:7043)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1355:12)
+    at i._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:6622)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:683:28855)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:675:25939)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at SP._doLoadModule (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:686:2062)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    4150ms] [ERROR] %c  ERR color: #f33 navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:7243)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:22976
+    at get value (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:17106)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:52:198
+    at $ZodObject.n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:14845)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:54:19694
+    at n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:14845)
+    at new ZodObject (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:15109)
+    at gi (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:54:9981)
+    at Object.<anonymous> (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:337:8605)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1355:12)
+    at i._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:6622)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:683:28855)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:675:25939)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at SP._doLoadModule (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:686:2062)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    4262ms] [LOG] %c[Extension Host] %cCreated lock file at /home/work/.claude/ide/53564.lock color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[    4263ms] [LOG] %c[Extension Host] %cSet CLAUDE_CODE_SSE_PORT=53564 in terminal environment (in-memory) color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[    4519ms] [LOG] %c[Extension Host] %c[INFO] 2026-07-30T06:06:23.996Z - Translations initialized. color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[    4520ms] [LOG] %c[Extension Host] %c[INFO] 2026-07-30T06:06:24.002Z - Extension activated! color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[    5160ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://open-vsx.org/vscode/gallery/vscode/pat-erler/claude-code-helper/latest:0
+[    5160ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://open-vsx.org/vscode/gallery/vscode/github/copilot-chat/latest:0
+[    5290ms] [LOG] %c INFO color: #33f Updating additional builtin extensions cache @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    7642ms] [LOG] %c INFO color: #33f [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[    8148ms] [ERROR] Loading the font 'data:font/ttf;base64,AAEAAAALAIAAAwAwR1NVQiCLJXoAAAE4AAAAVE9TLzI3T0tHAAABjAAAAGBjbWFwQ5s/ewAACSQAABreZ2x5ZvJtKHkAACekAAD3FGhlYWRYl6BTAAAA4AAAADZoaGVhAlsC+QAAALwAAAAkaG10eBxB//oAAAHsAAAHOGxvY2EFi8dWAAAkBAAAA55tYXhwAu8BgQAAARgAAAAgbmFtZZP3uUsAAR64AAAB+HBvc3RjGEbCAAEgsAAAGSQAAQAAASwAAAAAASz////+AS4AAQAAAAAAAAAAAAAAAAAAAc4AAQAAAAEAAFT7+XFfDzz1AAsBLAAAAAB8JbCAAAAAAHwlsID////9AS4BLQAAAAgAAgAAAAAAAAABAAABzgF1ABcAAAAAAAIAAAAKAAoAAAD/AAAAAAAAAAEAAAAKADAAPgACREZMVAAObGF0bgAaAAQAAAAAAAAAAQAAAAQAAAAAAAAAAQAAAAFsaWdhAA...h0C3RyaWFuZ2xlLXVwB3R3aXR0ZXISdHlwZS1oaWVyYXJjaHktc3ViFHR5cGUtaGllcmFyY2h5LXN1cGVyDnR5cGUtaGllcmFyY2h5BnVuZm9sZBN1bmdyb3VwLWJ5LXJlZi10eXBlBnVubG9jawZ1bm11dGUKdW52ZXJpZmllZA52YXJpYWJsZS1ncm91cA92ZXJpZmllZC1maWxsZWQIdmVyaWZpZWQIdmVyc2lvbnMJdm0tYWN0aXZlCnZtLWNvbm5lY3QKdm0tb3V0bGluZQp2bS1ydW5uaW5nAnZtAnZyD3ZzY29kZS1pbnNpZGVycwZ2c2NvZGUEd2FuZAd3YXJuaW5nBXdhdGNoCndoaXRlc3BhY2UKd2hvbGUtd29yZAZ3aW5kb3cJd29yZC13cmFwEXdvcmtzcGFjZS10cnVzdGVkEXdvcmtzcGFjZS11bmtub3duE3dvcmtzcGFjZS11bnRydXN0ZWQHem9vbS1pbgh6b29tLW91dAAA' violates the following Content Security Policy directive: "font-src 'self' https://*.vscode-cdn.net". The action has been blocked. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/contrib/webview/browser/pre/index.html?id=2c973023-df47-49ee-ae99-4fcbfb352037&parentId=1&origin=13694ee0-12ab-4b8d-9adb-2982013dcd95&swVersion=5&extensionId=Anthropic.claude-code&platform=browser&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=http%3A%2F%2F127.0.0.1%3A8083&remoteAuthority=127.0.0.1%3A8083&purpose=webviewView:0
+[   10982ms] [LOG] %c INFO color: #33f [lifecycle] onBeforeUnload triggered and handled with veto support @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   10983ms] [ERROR] %c  ERR color: #f33 [lifecycle] Long running operations during shutdown are unsupported in the web (id: join.disconnectRemote) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   10984ms] [ERROR] %c  ERR color: #f33 [lifecycle] Long running operations during shutdown are unsupported in the web (id: join.chatSessionStore) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   10984ms] [ERROR] %c  ERR color: #f33 [lifecycle] Long running operations during shutdown are unsupported in the web (id: join.chatEditingSession) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11006ms] [WARNING] %c WARN color: #993 Attempted to report in-progress status for unknown chat session type 'local' @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11047ms] [ERROR] %c  ERR color: #f33 Failed to resolve files at location: vscode-remote://127.0.0.1:8083/home/work/.copilot/agents Canceled: Canceled
+    at Object.call (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1068:1741)
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1069:2700
+    at async wae.doResolveFile (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:136238)
+    at async wae.resolve (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:135953)
+    at async N_e.resolveFilesAtLocation (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:26050)
+    at async N_e.listFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:21487)
+    at async Promise.all (index 0)
+    at async V_e.computeListPromptFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:47830)
+    at async V_e.computeAgentDiscoveryInfo (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:53343) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11048ms] [ERROR] %c  ERR color: #f33 Failed to resolve files at location: vscode-remote://127.0.0.1:8083/home/work/.github/agents Canceled: Canceled
+    at Object.call (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1068:1741)
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1069:2700
+    at async wae.doResolveFile (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:136238)
+    at async wae.resolve (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:135953)
+    at async N_e.resolveFilesAtLocation (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:26050)
+    at async N_e.listFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:21487)
+    at async Promise.all (index 1)
+    at async V_e.computeListPromptFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:47830)
+    at async V_e.computeAgentDiscoveryInfo (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:53343) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11048ms] [ERROR] %c  ERR color: #f33 Failed to resolve files at location: vscode-remote://127.0.0.1:8083/home/work/.claude/agents Canceled: Canceled
+    at Object.call (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1068:1741)
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1069:2700
+    at async wae.doResolveFile (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:136238)
+    at async wae.resolve (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:135953)
+    at async N_e.resolveFilesAtLocation (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:26050)
+    at async N_e.listFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:21487)
+    at async Promise.all (index 0)
+    at async V_e.computeListPromptFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:47830)
+    at async V_e.computeAgentDiscoveryInfo (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:53343) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11048ms] [ERROR] %c  ERR color: #f33 Failed to resolve files at location: vscode-remote://127.0.0.1:8083/home/work/.claude/agents Canceled: Canceled
+    at Object.call (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1068:1741)
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1069:2700
+    at async wae.doResolveFile (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:136238)
+    at async wae.resolve (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:135953)
+    at async N_e.resolveFilesAtLocation (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:26050)
+    at async N_e.listFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:21487)
+    at async Promise.all (index 1)
+    at async V_e.computeListPromptFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:47830)
+    at async V_e.computeAgentDiscoveryInfo (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:53343) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11048ms] [ERROR] %c  ERR color: #f33 Failed to resolve files at location: vscode-remote:/home/work/.local/share/code-server/User/prompts Canceled: Canceled
+    at Object.call (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1068:1741)
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1069:2700
+    at async wae.doResolveFile (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:136238)
+    at async wae.resolve (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:135953)
+    at async N_e.resolveFilesAtLocation (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:26050)
+    at async N_e.listFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:982:21487)
+    at async Promise.all (index 0)
+    at async V_e.computeListPromptFiles (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:47830)
+    at async V_e.computeAgentDiscoveryInfo (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:53343) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11151ms] [ERROR] %c  ERR color: #f33 Unable to write file 'vscode-log:/20260730T080621/window.log' (Error: IndexedDB database 'vscode-web-db' is closed.): Error: Unable to write file 'vscode-log:/20260730T080621/window.log' (Error: IndexedDB database 'vscode-web-db' is closed.)
+    at wae.writeFile (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5082:138681)
+    at async rmt.flush (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5085:102604) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11421ms] [LOG] %c INFO color: #33f Resolving connection token (127.0.0.1:8083)... @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11423ms] [LOG] %c INFO color: #33f Resolved connection token (127.0.0.1:8083) after 1 ms @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11428ms] [LOG] %c INFO color: #33f Creating a socket (renderer-Management-5e010f49-5146-49ae-9674-ebdbf43b9693)... @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11521ms] [LOG] %c INFO color: #33f Creating a socket (renderer-Management-5e010f49-5146-49ae-9674-ebdbf43b9693) was successful after 93 ms. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11602ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/node_modules/vsda/rust/web/vsda_bg.wasm:0
+[   11609ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/node_modules/vsda/rust/web/vsda.js:0
+[   11620ms] [LOG] %c INFO color: #33f [reconnection-grace-time] Client received grace time from server: 10800000ms (10800s) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11788ms] [WARNING] The web worker extension host is started in a same-origin iframe! @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5086
+[   11791ms] [LOG] %c INFO color: #33f Creating a socket (renderer-ExtensionHost-e4e92bd0-eed6-4e4e-a718-7e794206344c)... @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11851ms] [LOG] %c INFO color: #33f [Service Worker] registered @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   11944ms] [LOG] %c INFO color: #33f Creating a socket (renderer-ExtensionHost-e4e92bd0-eed6-4e4e-a718-7e794206344c) was successful after 154 ms. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   12054ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/services/extensions/worker/webWorkerExtensionHostIframe.html?&vscodeWebWorkerExtHostId=cc7cd948-1782-4c3e-9c0a-29ff301bfd77:0
+[   12422ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5130
+[   12695ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/contrib/webview/browser/pre/index.html?id=8b33e32a-06c7-49f5-a788-b799a4e46589&parentId=1&origin=13694ee0-12ab-4b8d-9adb-2982013dcd95&swVersion=5&extensionId=Anthropic.claude-code&platform=browser&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=http%3A%2F%2F127.0.0.1%3A8083&remoteAuthority=127.0.0.1%3A8083&purpose=webviewView:0
+[   12826ms] [LOG] %c INFO color: #33f [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   12999ms] [LOG] %c INFO color: #33f [AgentHost:remote] Initializing (enabled=false, remoteAuthority=127.0.0.1:8083) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   12999ms] [LOG] %c INFO color: #33f [AgentHost:remote] Disabled via "chat.agentHost.enabled" or web runtime. Not connecting. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   13332ms] [ERROR] %c  ERR color: #f33 navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:7243)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:9615
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:9929
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:10192
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:13:11115
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:15:849
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:22:1115
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:1896
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:5127
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:5656
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:2:1076
+    at Object.<anonymous> (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:120:277)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1355:12)
+    at i._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:6622)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:683:28855)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:675:25939)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at SP._doLoadModule (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:686:2062)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   13333ms] [ERROR] %c  ERR color: #f33 navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:7243)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:18270
+    at get value (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:16988)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:188:199
+    at $ZodObject.n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:14781)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:190:11641
+    at n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:14781)
+    at new ZodObject (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:162:15045)
+    at $i (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:190:12527)
+    at Object.<anonymous> (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:247:7043)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1355:12)
+    at i._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:6622)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:683:28855)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:675:25939)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at SP._doLoadModule (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:686:2062)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   13334ms] [ERROR] %c  ERR color: #f33 navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.: PendingMigrationError: navigator is now a global in nodejs, please see https://aka.ms/vscode-extensions/navigator for additional info on this error.
+    at get (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:7243)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:22976
+    at get value (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:17106)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:52:198
+    at $ZodObject.n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:14845)
+    at /home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:54:19694
+    at n (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:14845)
+    at new ZodObject (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:26:15109)
+    at gi (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:54:9981)
+    at Object.<anonymous> (/home/work/.local/share/code-server/extensions/anthropic.claude-code-2.1.220-linux-x64/extension.js:337:8605)
+    at Module._compile (node:internal/modules/cjs/loader:1830:14)
+    at Object..js (node:internal/modules/cjs/loader:1961:10)
+    at Module.load (node:internal/modules/cjs/loader:1553:32)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1355:12)
+    at i._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:837:6622)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:683:28855)
+    at n._load (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:675:25939)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1576:12)
+    at require (node:internal/modules/helpers:153:16)
+    at SP._doLoadModule (file:///usr/lib/code-server/lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js:686:2062)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   13437ms] [LOG] %c[Extension Host] %cCreated lock file at /home/work/.claude/ide/64016.lock color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[   13437ms] [LOG] %c[Extension Host] %cSet CLAUDE_CODE_SSE_PORT=64016 in terminal environment (in-memory) color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[   13695ms] [ERROR] Loading the font 'data:font/ttf;base64,AAEAAAALAIAAAwAwR1NVQiCLJXoAAAE4AAAAVE9TLzI3T0tHAAABjAAAAGBjbWFwQ5s/ewAACSQAABreZ2x5ZvJtKHkAACekAAD3FGhlYWRYl6BTAAAA4AAAADZoaGVhAlsC+QAAALwAAAAkaG10eBxB//oAAAHsAAAHOGxvY2EFi8dWAAAkBAAAA55tYXhwAu8BgQAAARgAAAAgbmFtZZP3uUsAAR64AAAB+HBvc3RjGEbCAAEgsAAAGSQAAQAAASwAAAAAASz////+AS4AAQAAAAAAAAAAAAAAAAAAAc4AAQAAAAEAAFT7+XFfDzz1AAsBLAAAAAB8JbCAAAAAAHwlsID////9AS4BLQAAAAgAAgAAAAAAAAABAAABzgF1ABcAAAAAAAIAAAAKAAoAAAD/AAAAAAAAAAEAAAAKADAAPgACREZMVAAObGF0bgAaAAQAAAAAAAAAAQAAAAQAAAAAAAAAAQAAAAFsaWdhAA...h0C3RyaWFuZ2xlLXVwB3R3aXR0ZXISdHlwZS1oaWVyYXJjaHktc3ViFHR5cGUtaGllcmFyY2h5LXN1cGVyDnR5cGUtaGllcmFyY2h5BnVuZm9sZBN1bmdyb3VwLWJ5LXJlZi10eXBlBnVubG9jawZ1bm11dGUKdW52ZXJpZmllZA52YXJpYWJsZS1ncm91cA92ZXJpZmllZC1maWxsZWQIdmVyaWZpZWQIdmVyc2lvbnMJdm0tYWN0aXZlCnZtLWNvbm5lY3QKdm0tb3V0bGluZQp2bS1ydW5uaW5nAnZtAnZyD3ZzY29kZS1pbnNpZGVycwZ2c2NvZGUEd2FuZAd3YXJuaW5nBXdhdGNoCndoaXRlc3BhY2UKd2hvbGUtd29yZAZ3aW5kb3cJd29yZC13cmFwEXdvcmtzcGFjZS10cnVzdGVkEXdvcmtzcGFjZS11bmtub3duE3dvcmtzcGFjZS11bnRydXN0ZWQHem9vbS1pbgh6b29tLW91dAAA' violates the following Content Security Policy directive: "font-src 'self' https://*.vscode-cdn.net". The action has been blocked. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/contrib/webview/browser/pre/index.html?id=8b33e32a-06c7-49f5-a788-b799a4e46589&parentId=1&origin=13694ee0-12ab-4b8d-9adb-2982013dcd95&swVersion=5&extensionId=Anthropic.claude-code&platform=browser&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=http%3A%2F%2F127.0.0.1%3A8083&remoteAuthority=127.0.0.1%3A8083&purpose=webviewView:0
+[   13735ms] [LOG] %c[Extension Host] %c[INFO] 2026-07-30T06:06:33.216Z - Translations initialized. color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[   13736ms] [LOG] %c[Extension Host] %c[INFO] 2026-07-30T06:06:33.221Z - Extension activated! color: blue color:  @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1034
+[   15155ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://open-vsx.org/vscode/gallery/vscode/pat-erler/claude-code-helper/latest:0
+[   15155ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://open-vsx.org/vscode/gallery/vscode/github/copilot-chat/latest:0
+[   15241ms] [LOG] %c INFO color: #33f Updating additional builtin extensions cache @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   15371ms] [ERROR] %c  ERR color: #f33 Canceled: Canceled
+    at fIe.value (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:434:72418)
+    at T._deliver (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3268)
+    at T._deliverQueue (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3357)
+    at T.fire (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3692)
+    at TIe.cancel (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:30911)
+    at je.cancel (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:31452)
+    at Whe.triggerRefresh (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1113:16824)
+    at fIe.value (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1113:14656)
+    at T._deliver (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3268)
+    at T.fire (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3587)
+    at fIe.value (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:72784)
+    at T._deliver (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3268)
+    at T._deliverQueue (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3357)
+    at T.fire (http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:433:3692)
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:1018:67626
+    at http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:434:74953 Failed to load custom agents @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   17827ms] [LOG] %c INFO color: #33f [AccountPolicyGate] apply: state=inactive, reason=undefined, isRestricted=false @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:441
+[   21909ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/code/browser/workbench/workbench.js:5130
+[   22079ms] [WARNING] An iframe which has both allow-scripts and allow-same-origin for its sandbox attribute can escape its sandboxing. @ http://127.0.0.1:8083/stable-fade53fcaf82e7c535cb972a7e3d8da4e43b63a4/static/out/vs/workbench/contrib/webview/browser/pre/index.html?id=74ea49dc-5faa-46e1-83d1-47cf7c75c5e7&parentId=1&origin=95db533d-425d-4903-bb6a-68a4b4b524c5&swVersion=5&extensionId=pat-erler.claude-code-helper&platform=browser&vscode-resource-base-authority=vscode-resource.vscode-cdn.net&parentOrigin=http%3A%2F%2F127.0.0.1%3A8083&remoteAuthority=127.0.0.1%3A8083&purpose=webviewView:0
+[   73388ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:8083/?folder=/home/work:0
+[   73559ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:8083/?folder=/home/work:0
+[   73587ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:8083/?folder=/home/work:0
+[   73749ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://127.0.0.1:8083/?folder=/home/work:0

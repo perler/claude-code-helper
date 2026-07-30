@@ -890,6 +890,11 @@ async function launchClaude(fav, resumeArg, opts = {}) {
   // go through terminal.sendText and a shell startup, so the process can take a
   // few seconds to show up in ps.
   if (sessProvider) for (const ms of [2000, 8000]) setTimeout(() => { try { sessProvider.refresh(); } catch {} }, ms);
+  // Truthy only when a session actually started — every early return above is a
+  // user cancellation (name prompt, terminal-mode pick). The New Task box needs the
+  // difference to decide whether taking focus back is helpful or destructive.
+  // 'external' launches into another window and hand back no terminal object.
+  return terminal || mode === 'external';
 }
 
 async function startClaude(fav) {
@@ -1038,7 +1043,10 @@ function uniqueDir(dir) {
 async function askClaudeSession(question, onState) {
   const q = String(question || '').trim();
   if (!q) return;
-  const state = (s) => { try { onState && onState(s); } catch {} };
+  // refocus: put the cursor back in the box on the way to idle. Right after a
+  // cancellation that is what the user wants; right after a launch it would steal
+  // focus from the terminal the session just opened in.
+  const state = (s, refocus) => { try { onState && onState(s, refocus); } catch {} };
   state('naming');
   const plan = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: 'Claude: naming session…' },
@@ -1058,7 +1066,7 @@ async function askClaudeSession(question, onState) {
       [proposed, scratch].map((t) => ({ label: `$(folder) ${shortHome(t.dir)}`, description: t.desc, target: t })),
       { placeHolder: 'Start the session where?' }
     );
-    if (!pick) { state('idle'); return; }
+    if (!pick) { state('idle', true); return; }
     choice = pick.target;
   }
   const dir = choice.create ? uniqueDir(choice.dir) : choice.dir;
@@ -1066,16 +1074,17 @@ async function askClaudeSession(question, onState) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch (e) {
-      state('idle');
+      state('idle', true);
       vscode.window.showErrorMessage(`Claude Code Helper: could not create ${dir} — ${e.message}`);
       return;
     }
   }
   state('launching');
+  let started = false;
   try {
-    await launchClaude({ path: dir, label: path.basename(dir) }, false, { skipNamePrompt: true, initialPrompt: q });
+    started = !!(await launchClaude({ path: dir, label: path.basename(dir) }, false, { skipNamePrompt: true, initialPrompt: q }));
   } finally {
-    state('idle');
+    state('idle', !started);
   }
 }
 
@@ -1216,8 +1225,8 @@ class AskViewProvider {
     view.webview.html = this._html(view.webview);
     view.webview.onDidReceiveMessage((msg) => {
       if (!msg || msg.type !== 'ask') return;
-      askClaudeSession(msg.text, (s) => {
-        try { view.webview.postMessage({ type: 'state', state: s }); } catch {}
+      askClaudeSession(msg.text, (s, refocus) => {
+        try { view.webview.postMessage({ type: 'state', state: s, refocus: !!refocus }); } catch {}
       });
     });
   }
@@ -1281,7 +1290,10 @@ class AskViewProvider {
     if (m.state === 'naming') startTick('Naming session…');
     else if (m.state === 'choosing') startTick('Confirm where to start…');
     else if (m.state === 'launching') startTick('Starting Claude…');
-    else { stopTick(); hint.textContent = IDLE; q.value = ''; grow(); q.focus(); }
+    // Focus only when the extension says nothing started. A launch ends with the new
+    // session's terminal focused, and focusing this textarea would pull the cursor
+    // straight back out of it — the box would swallow the first thing typed at Claude.
+    else { stopTick(); hint.textContent = IDLE; q.value = ''; grow(); if (m.refocus) q.focus(); }
   });
 </script></body></html>`;
   }
