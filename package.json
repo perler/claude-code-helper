@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -291,6 +291,16 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "claudeHelper.openTerminalTask",
+        "title": "Open Asana Task",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "claudeHelper.openSessionTask",
+        "title": "Open Asana Task",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "claudeHelper.copyAgentSessionId",
         "title": "Copy Session ID"
       },
@@ -482,107 +492,132 @@
         },
         {
           "command": "claudeHelper.focusTerminal",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "inline@1"
         },
         {
           "command": "claudeHelper.revealTerminalCwd",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "inline@2"
         },
         {
           "command": "claudeHelper.focusTerminal",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "1_focus@1"
         },
         {
           "command": "claudeHelper.revealTerminalCwd",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "1_focus@2"
         },
         {
           "command": "claudeHelper.copyTerminalCwd",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "1_focus@3"
         },
         {
+          "command": "claudeHelper.openTerminalTask",
+          "when": "view == claudeHelper.terminals && viewItem == terminalAsana",
+          "group": "inline@3"
+        },
+        {
+          "command": "claudeHelper.openTerminalTask",
+          "when": "view == claudeHelper.terminals && viewItem == terminalAsana",
+          "group": "1_focus@4"
+        },
+        {
           "command": "claudeHelper.splitTerminal",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "2_edit@1"
         },
         {
           "command": "claudeHelper.renameTerminal",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "2_edit@2"
         },
         {
           "command": "claudeHelper.killTerminal",
-          "when": "view == claudeHelper.terminals && viewItem == terminal",
+          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
           "group": "9_destroy@1"
         },
         {
           "command": "claudeHelper.resumeSession",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "inline@1"
         },
         {
           "command": "claudeHelper.resumeSession",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "1_open@1"
         },
         {
           "command": "claudeHelper.openSessionFolder",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "1_open@2"
         },
         {
           "command": "claudeHelper.revealSessionFile",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "1_open@3"
         },
         {
+          "command": "claudeHelper.openSessionTask",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "claudeHelper.openSessionTask",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/",
+          "group": "1_open@4"
+        },
+        {
           "command": "claudeHelper.copySessionId",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "2_copy@1"
         },
         {
           "command": "claudeHelper.copySessionPath",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "2_copy@2"
         },
         {
           "command": "claudeHelper.hideSession",
-          "when": "view == claudeHelper.sessions && (viewItem == session || viewItem == sessionLive)",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
           "group": "3_remove@1"
         },
         {
           "command": "claudeHelper.deleteSession",
-          "when": "view == claudeHelper.sessions && viewItem == session",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?$/",
           "group": "3_remove@2"
         },
         {
           "command": "claudeHelper.attachAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
           "group": "inline@1"
         },
         {
-          "command": "claudeHelper.killAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+          "command": "claudeHelper.openAgentTask",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /Task$/",
           "group": "inline@2"
         },
         {
+          "command": "claudeHelper.killAgentSession",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
+          "group": "inline@3"
+        },
+        {
           "command": "claudeHelper.resumeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionEnded/",
           "group": "inline@1"
         },
         {
           "command": "claudeHelper.removeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
-          "group": "inline@2"
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionEnded/",
+          "group": "inline@3"
         },
         {
           "command": "claudeHelper.attachAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
           "group": "1_open@1"
         },
         {
@@ -607,12 +642,12 @@
         },
         {
           "command": "claudeHelper.killAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionLive",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
           "group": "9_destroy@1"
         },
         {
           "command": "claudeHelper.removeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem == agentSessionEnded",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionEnded/",
           "group": "9_destroy@1"
         },
         {

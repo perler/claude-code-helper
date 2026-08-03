@@ -398,7 +398,7 @@ function buildFavouriteTooltip(fav) {
   });
 }
 
-function buildTerminalTooltip(terminal, cwd) {
+function buildTerminalTooltip(terminal, cwd, task) {
   const isActive = terminal === vscode.window.activeTerminal;
   const tabName = terminalDisplayName(terminal);
   const shellName = (terminal.name || '').trim();
@@ -421,6 +421,7 @@ function buildTerminalTooltip(terminal, cwd) {
   const metaLines = [];
   if (cwd) metaLines.push(`📁 \`${cwd.fsPath}\``);
   else metaLines.push('📁 _no cwd available_');
+  if (task) metaLines.push(`🔗 ${task.permalink}`);
   if (sessionInfo) {
     metaLines.push(`💬 ${sessionInfo.count} session${sessionInfo.count === 1 ? '' : 's'} · last ${relativeTime(sessionInfo.mtime)}`);
   }
@@ -1299,6 +1300,40 @@ class AskViewProvider {
   }
 }
 
+// ─── asana task lookup ───────────────────────────────────────────────────────
+//
+// Which Asana task, if any, a session belongs to. The bridge's index (∪ our
+// history) is the only source: it records a `permalink` per session id and per
+// working dir, so a hit is recorded fact, not inference — nothing is read out of
+// transcript contents, and a session with no entry simply gets no link.
+
+function asanaTasks() {
+  return agentSessions().filter((e) => e && e.permalink);
+}
+
+// Session id first: it is exact. The working dir is the fallback for terminals we
+// can't tie to an id (a window reload empties the id→terminal map) — safe because
+// the bridge gives every task its own directory; newest entry wins if a dir was
+// reused. Pass `entries` to resolve a whole tree render off one index read.
+function asanaTaskFor(sessionId, dir, entries) {
+  const list = entries || asanaTasks();
+  if (sessionId) {
+    const hit = list.find((e) => e.sessionId === sessionId);
+    if (hit) return hit;
+  }
+  if (!dir) return null;
+  const stamp = (e) => Date.parse(e.resumedAt || e.createdAt || '') || 0;
+  return list.filter((e) => e.dir === dir).sort((a, b) => stamp(b) - stamp(a))[0] || null;
+}
+
+function openAsanaTask(entry) {
+  if (!entry || !entry.permalink) {
+    vscode.window.showInformationMessage('No Asana link recorded for this session.');
+    return;
+  }
+  vscode.env.openExternal(vscode.Uri.parse(entry.permalink));
+}
+
 // ─── terminals ───────────────────────────────────────────────────────────────
 
 const SHELL_NAMES = new Set([
@@ -1317,6 +1352,16 @@ function terminalDisplayName(terminal) {
   const cwd = getTerminalCwd(terminal);
   if (cwd) return path.basename(cwd.fsPath);
   return n || '—';
+}
+
+// Reverse of sessionTerminals: the session id this window attached in a terminal.
+function sessionIdForTerminal(terminal) {
+  for (const [id, t] of sessionTerminals) if (t === terminal) return id;
+  return null;
+}
+
+function terminalAsanaTask(terminal, cwd, entries) {
+  return asanaTaskFor(sessionIdForTerminal(terminal), cwd && cwd.fsPath, entries);
 }
 
 function findReusableTerminal(dir) {
@@ -1346,20 +1391,23 @@ class TerminalsProvider {
   getChildren() {
     const showWithoutCwd = cfg().get('showTerminalsWithoutCwd', true);
     const active = vscode.window.activeTerminal;
+    const tasks = asanaTasks(); // one index read for the whole render
     const out = [];
     for (const t of vscode.window.terminals) {
       const cwd = getTerminalCwd(t);
       if (!cwd && !showWithoutCwd) continue;
       const isActive = t === active;
+      const task = terminalAsanaTask(t, cwd, tasks);
       const item = new vscode.TreeItem(terminalDisplayName(t), vscode.TreeItemCollapsibleState.None);
       item.description = cwd ? shortHome(cwd.fsPath) : 'no cwd';
-      item.tooltip = buildTerminalTooltip(t, cwd);
-      item.contextValue = 'terminal';
+      item.tooltip = buildTerminalTooltip(t, cwd, task);
+      // Only rows with a recorded task get the Asana button.
+      item.contextValue = task ? 'terminalAsana' : 'terminal';
       item.iconPath = new vscode.ThemeIcon(
         'terminal',
         isActive ? new vscode.ThemeColor('terminal.ansiGreen') : new vscode.ThemeColor('disabledForeground')
       );
-      const node = { terminal: t, cwd, treeItem: item };
+      const node = { terminal: t, cwd, task, treeItem: item };
       item.command = { command: 'claudeHelper.focusTerminal', title: 'Focus Terminal', arguments: [node] };
       out.push(node);
     }
@@ -1570,8 +1618,11 @@ class SessionsProvider {
           ? `Filter “${this._filter}” — ${sessions.length} of ${all.length} session${all.length === 1 ? '' : 's'}`
           : undefined;
       }
+      // Resolve Asana tasks once per load rather than per rendered row.
+      const tasks = asanaTasks();
       const groups = new Map();
       for (const s of sessions) {
+        s.asana = asanaTaskFor(s.id, null, tasks);
         const b = bucketFor(s.mtime);
         if (!groups.has(b.key)) groups.set(b.key, { key: b.key, label: b.label, sessions: [] });
         groups.get(b.key).sessions.push(s);
@@ -1597,8 +1648,10 @@ class SessionsProvider {
     it.description = (s.live ? '🟢 ' : '') + relativeTime(s.mtime);
     it.tooltip = buildSessionTooltip(s, meta);
     // Live rows get their own contextValue so the destructive menu entries
-    // (Delete Session) don't apply to a session that's still running.
-    it.contextValue = s.live ? 'sessionLive' : 'session';
+    // (Delete Session) don't apply to a session that's still running. The
+    // `Asana` suffix is what shows the task button — only on rows the bridge
+    // index knows a task for.
+    it.contextValue = (s.live ? 'sessionLive' : 'session') + (s.asana ? 'Asana' : '');
     it.iconPath = s.live
       ? new vscode.ThemeIcon('comment-discussion', new vscode.ThemeColor('terminal.ansiGreen'))
       : new vscode.ThemeIcon('comment-discussion');
@@ -1823,7 +1876,8 @@ class AgentSessionsProvider {
     let meta = null;
     try { meta = readSessionMeta(agentSessionFile(e)); } catch {}
     item.tooltip = buildAgentTooltip(e, live, meta);
-    item.contextValue = live ? 'agentSessionLive' : 'agentSessionEnded';
+    // …Task suffix = a recorded Asana permalink, which is what shows the button.
+    item.contextValue = (live ? 'agentSessionLive' : 'agentSessionEnded') + (e.permalink ? 'Task' : '');
     item.iconPath = isAsana
       ? vscode.Uri.file(path.join(__dirname, 'resources', 'asana.svg'))
       : new vscode.ThemeIcon(
@@ -2355,12 +2409,17 @@ function activate(context) {
     if (!node || !node.entry) return;
     vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(node.entry.dir), { forceNewWindow: true });
   });
-  reg('claudeHelper.openAgentTask', (node) => {
-    if (!node || !node.entry || !node.entry.permalink) {
-      vscode.window.showInformationMessage('No Asana link recorded for this session.');
-      return;
-    }
-    vscode.env.openExternal(vscode.Uri.parse(node.entry.permalink));
+  reg('claudeHelper.openAgentTask', (node) => openAsanaTask(node && node.entry));
+  // Same link from the other two views. Both re-resolve at click time instead of
+  // trusting the render-time node: the index moves on (a session ends, a terminal
+  // gets reused for another task) while the tree sits there.
+  reg('claudeHelper.openTerminalTask', (node) => {
+    if (!node || !node.terminal) return;
+    openAsanaTask(terminalAsanaTask(node.terminal, node.cwd) || node.task);
+  });
+  reg('claudeHelper.openSessionTask', (node) => {
+    if (!node || node.kind !== 'session') return;
+    openAsanaTask(asanaTaskFor(node.session.id) || node.session.asana);
   });
   reg('claudeHelper.copyAgentSessionId', (node) => {
     if (!node || !node.entry) return;
