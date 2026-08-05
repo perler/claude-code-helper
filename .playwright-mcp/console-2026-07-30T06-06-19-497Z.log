@@ -289,4 +289,3 @@
 [   73559ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:8083/?folder=/home/work:0
 [   73587ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels @ http://127.0.0.1:8083/?folder=/home/work:0
 [   73749ms] [WARNING] [.WebGL-0x7c4000f6800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat) @ http://127.0.0.1:8083/?folder=/home/work:0
-[  297799ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://open-vsx.org/vscode/gallery/vscode/pat-erler/claude-code-helper/latest:0

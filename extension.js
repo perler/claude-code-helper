@@ -693,40 +693,26 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
 // On a *silent* code-server reconnect (the browser/notebook drops and re-establishes
 // its websocket) the dtach client stays attached the whole time, so no re-attach
 // fires and `-r winch` never re-triggers — the full-screen Claude TUI shows stale
-// output and looks frozen, even though the process is alive and well.
+// output and looks frozen, even though the process is alive and well. Nudge every
+// dtach master (a `dtach` process with no controlling tty) with SIGWINCH; the program
+// repaints and dtach forwards the fresh frame to the reconnected client. SIGWINCH is
+// benign — sessions that don't need it simply repaint.
 //
-// RECONNECT STALL MECHANISM (fixed 2026-08-05):
-// On code-server disconnect/reconnect, the old `dtach -a | dtdrain` pipeline survives
-// in the disconnected terminal, holding stale data in dtdrain's 256KB ring. When the
-// terminal reconnects, the old pipe is still attached to the pty, blocking new output.
-// SIGWINCH alone doesn't fix this because dtdrain is still buffering.
-//
-// FIX: Kill stale dtdrain processes (and their parent dtach attach clients) FIRST.
-// This unblocks the pty. Then send SIGWINCH so the master redraws on a clean pipe.
-// The next keystroke will spawn a fresh `dtach -a` with `-r winch`, completing the
-// recovery cleanly. (SIGWINCH is still sent as a nudge for sessions with no input.)
+// Two winches, spaced out. dtdrain drops the oldest bytes when its ring fills on a
+// paused terminal (dtdrain.c), which can tear the escape-sequence stream mid-frame:
+// lost cursor-move/clear sequences leave a stale frame (e.g. Claude's own welcome/
+// fleet screen) overlaid on the live one, and a single differential winch-repaint
+// won't rewrite the cells it thinks are already correct. The first winch fires now;
+// the second fires after the drain ring has had time to flush, so the repaint lands
+// on a settled grid and clears the overlay instead of interleaving with it.
 function redrawDtachSessions() {
-  // Kill stale drain processes (holding old pty references) first.
-  // Their parent dtach attach clients die too when the pipe closes.
-  const drain = dtdrainBin();
-  if (drain) {
-    try {
-      cp.exec(`pkill -f ${JSON.stringify(drain)} 2>/dev/null`);
-    } catch { /* best-effort cleanup */ }
-  }
-
-  // Brief delay to let the drain processes exit and the pty stabilize
-  setTimeout(() => {
-    try {
-      // Kill any remaining attach clients (in case dtdrain wasn't in use)
-      cp.exec(`pkill -f 'dtach -a' 2>/dev/null`);
-    } catch { /* best-effort cleanup */ }
-
-    // Now nudge all dtach masters with SIGWINCH to redraw on the clean pty
+  const nudge = () => {
     try {
       cp.exec(`ps -e -o pid=,tty=,comm= | awk '$2=="?" && $3=="dtach"{print $1}' | xargs -r kill -WINCH`);
     } catch { /* best-effort redraw nudge */ }
-  }, 50);
+  };
+  nudge();
+  setTimeout(nudge, 250);
 }
 
 // A launch name is "auto" (date-coded) when the user left the name blank and it fell
@@ -1953,50 +1939,6 @@ async function resumeAgentSession(node) {
   await launchClaude({ path: e.dir, label: e.displayName }, e.sessionId);
 }
 
-// Deep link: code-server's URL can carry exactly one thing, `?folder=<dir>`, so a
-// link like  https://ai.patsplanet.com/?folder=/home/work/clients/EEB/foo  is the
-// Asana-side "open this session" button and the folder is the whole address. Two
-// sources, because a link may point at either kind of dir: the bridge's index
-// (Asana-spawned sessions) and, for anything hand-started, the folder's own
-// transcripts. Live means the dtach socket still has a master behind it.
-function workspaceSessionEntry() {
-  const folders = vscode.workspace.workspaceFolders || [];
-  if (folders.length !== 1) return null; // no folder, or multi-root: no unambiguous session
-  const dir = folders[0].uri.fsPath;
-  const entries = agentSessions().filter((e) => e && e.dir === dir);
-  const live = entries.find(agentLive);
-  if (live) return { entry: live, live: true };
-  for (const s of listSessions(dir)) {
-    if (sessionDtachSocket(s.id)) {
-      return { entry: { sessionId: s.id, dir, displayName: path.basename(dir) }, live: true };
-    }
-  }
-  const ended = entries[0];
-  if (ended) return { entry: ended, live: false };
-  const last = listSessions(dir)[0];
-  if (!last) return null;
-  return { entry: { sessionId: last.id, dir, displayName: path.basename(dir) }, live: false };
-}
-
-// Run once per window start. An ended session is only ever OFFERED — opening a
-// folder must not silently spawn a claude process.
-function autoAttachWorkspaceSession() {
-  if (!cfg().get('autoAttachWorkspaceSession', true)) return;
-  const found = workspaceSessionEntry();
-  if (!found) return;
-  const { entry, live } = found;
-  // A browser reload restores the attach terminal and can re-run this; sending the
-  // attach line again would type it straight into the running Claude TUI. Whatever
-  // is already sitting on this session wins.
-  if (sessionAttachedHere(entry.sessionId)) { sessionTerminals.get(entry.sessionId).show(); return; }
-  const existing = vscode.window.terminals.find((t) => t.name === `▶ ${entry.displayName}`);
-  if (existing) { existing.show(); registerSessionTerminal(entry.sessionId, existing); return; }
-  if (live) { attachAgentSession({ entry }); return; }
-  vscode.window.showInformationMessage(
-    `No running Claude session in ${path.basename(entry.dir)}.`, 'Resume Last Session'
-  ).then((c) => { if (c === 'Resume Last Session') resumeAgentSession({ entry }); });
-}
-
 let agentProvider;
 let sessProvider; // module-level so launchClaude can nudge Recent Sessions after a launch
 
@@ -2568,14 +2510,6 @@ function activate(context) {
     });
     context.subscriptions.push({ dispose: () => watcher.close() });
   } catch { /* dir may not exist yet; timer still covers it */ }
-
-  // Deep-link landing: turn `?folder=<session dir>` into the live terminal. Delayed
-  // so the pty host and any restored terminals are up first — the reuse checks in
-  // autoAttachWorkspaceSession() are what keep a reload from attaching twice.
-  setTimeout(() => {
-    try { autoAttachWorkspaceSession(); }
-    catch (e) { console.error(`Claude Code Helper: auto-attach failed — ${e.message}`); }
-  }, 1500);
 }
 
 function deactivate() {}
