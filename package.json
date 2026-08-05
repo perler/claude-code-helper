@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.15.3",
+  "version": "0.16.1",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -758,6 +758,11 @@
           "type": "boolean",
           "default": true,
           "description": "Shorten paths by replacing $HOME with ~."
+        },
+        "claudeHelper.autoAttachWorkspaceSession": {
+          "type": "boolean",
+          "default": true,
+          "description": "When a window opens on a folder that has a live Claude session, attach to it automatically. This is what makes ?folder=<dir> deep links land in the session."
         },
         "claudeHelper.sessionsMaxAgeDays": {
           "type": "number",
