@@ -630,6 +630,24 @@ function dtachStealCmd(socket) {
   return `pkill -f ${JSON.stringify('dtach -a ' + socket)} 2>/dev/null`;
 }
 
+// The Asana bridge's `.run-claude.sh` carries environment a resumed session
+// cannot work without: ASANA_TASK_GID, ASANA_CLAUDE_BRIDGE, the guard-flag and
+// origin-flag paths, and the ~/.env token fallback. Rewriting the file with our
+// own minimal runner used to strip all of it, so a session resumed from this
+// extension lost its task identity, its guard posture, and the ability to post
+// to Asana at all — every comment 401s on an empty Bearer.
+//
+// Only `export` lines are carried, and only from a directory the bridge owns
+// (its marker file is there). Nothing is executed to read them.
+function bridgeRunnerExports(dir, runner) {
+  try {
+    if (!fs.existsSync(path.join(dir, '.asana-claude.json'))) return '';
+    const lines = fs.readFileSync(runner, 'utf8').split('\n')
+      .filter((l) => /^export\s+[A-Z_][A-Z0-9_]*=/.test(l));
+    return lines.length ? `${lines.join('\n')}\n` : '';
+  } catch { return ''; }
+}
+
 function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   const dir = fav.path;
   const c = cfg();
@@ -642,9 +660,22 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   if (initialPrompt) parts.push(shq(initialPrompt));
   const cmd = parts.join(' ');
   const runner = path.join(dir, '.run-claude.sh');
+  // NEVER overwrite the Asana bridge's runner. Its version exports
+  // ASANA_TASK_GID, ASANA_CLAUDE_BRIDGE, the guard-flag path, the origin flag
+  // and the ~/.env token fallback; ours exports none of them, so replacing it
+  // silently strips a resumed bridge session of its task identity, its guard
+  // posture and its ability to post to Asana at all (every comment 401s).
+  // Detected by the bridge's own marker file rather than by reading the script,
+  // so a hand-edited runner in a task directory is still protected.
+  //
+  // Keeping the bridge's runner verbatim is NOT the fix: it pins one session id,
+  // so resuming a different session from the same task directory would silently
+  // reopen the wrong conversation. Carry its `export` lines onto our own command
+  // instead — right session, right environment.
+  const exports = bridgeRunnerExports(dir, runner);
   try {
     fs.writeFileSync(runner,
-      `#!/usr/bin/env bash\ncd ${JSON.stringify(dir)}\n${cmd}\necho\necho "[claude session ended — resume with: ${bin} --resume ${id} --dangerously-skip-permissions]"\nexec bash\n`,
+      `#!/usr/bin/env bash\ncd ${JSON.stringify(dir)}\n${exports}${cmd}\necho\necho "[claude session ended — resume with: ${bin} --resume ${id} --dangerously-skip-permissions]"\nexec bash\n`,
       { mode: 0o755 });
   } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
   let socket;
@@ -1464,8 +1495,51 @@ function scanRecentSessions() {
 // invisible everywhere but the window that started them). Deliberately NOT
 // tmuxHasSession(): the runner keeps a bash alive after claude exits, so
 // tmux-liveness would keep hiding sessions that have actually ended.
+// The CLI's own session registry: `claude agents --json` reports every live
+// session with a real state — busy / idle / waiting / blocked — where this
+// extension previously had to infer liveness from a socket file plus a `ps`
+// scan and could only ever answer yes/no. Measured 2026-08-08: the CLI knew
+// about 8 live sessions while the bridge's hand-kept index held 2 and no state
+// at all.
+//
+// Cached for 2s because the tree asks per row. Returns null (NOT an empty map)
+// when the CLI cannot be reached, so callers can tell "nothing is running" from
+// "we do not know" and fall back to the old evidence instead of reporting every
+// session dead.
+let claudeAgentsCache = { at: 0, map: null };
+function claudeAgentsMap() {
+  if (claudeAgentsCache.map && Date.now() - claudeAgentsCache.at < 2000) return claudeAgentsCache.map;
+  try {
+    const bin = cfg().get('claudeCommand') || 'claude';
+    const out = cp.execFileSync(bin, ['agents', '--json'],
+      { encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024 });
+    const list = JSON.parse(out);
+    const map = new Map();
+    for (const a of Array.isArray(list) ? list : []) {
+      if (!a.sessionId) continue;
+      map.set(a.sessionId, {
+        sessionId: a.sessionId,
+        pid: a.pid || null,
+        cwd: a.cwd || '',
+        kind: a.kind || 'interactive',
+        // interactive agents carry `status`, background ones carry `state`
+        status: a.status || a.state || 'unknown',
+        waitingFor: a.waitingFor || null,
+        startedAt: a.startedAt || null,
+      });
+    }
+    claudeAgentsCache = { at: Date.now(), map };
+    return map;
+  } catch {
+    return null; // unknown — never mistake this for "nothing is running"
+  }
+}
+
 function liveSessionIds() {
   const ids = new Set();
+  // The CLI is authoritative and catches sessions the ps regex cannot see.
+  const agents = claudeAgentsMap();
+  if (agents) for (const id of agents.keys()) ids.add(id);
   try {
     const out = cp.execSync('ps -eo args=', { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
     const re = /--(?:session-id|resume)[ =]([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/g;
@@ -1737,14 +1811,66 @@ function tmuxAlive(name) {
   } catch { return false; }
 }
 
-// Is the session behind this entry still running? tmux-backed entries ask tmux;
-// dtach-backed ones (everything the bridge writes) go by the socket, which is
-// exactly how the bridge itself defines liveness — it unlinks the socket when it
-// kills a session, and dtach removes it when the process exits.
+// Is the session behind this entry still running?
+//
+// The CLI is asked first and settles it for every kind of session — tmux,
+// dtach, or the bridge rewrite's headless `claude -p --resume` runs, which have
+// no socket and no tmux name at all and would otherwise render ⚫ ended while
+// actively working. Only when the CLI is unreachable do we fall back to the old
+// evidence, which remains correct for what it covers.
 function agentLive(entry) {
   if (!entry) return false;
+  const agents = claudeAgentsMap();
+  if (agents && entry.sessionId && agents.has(entry.sessionId)) return true;
   if (entry.tmuxName) return tmuxAlive(entry.tmuxName);
-  return !!(entry.sessionId && sessionDtachSocket(entry.sessionId));
+  if (entry.sessionId && sessionDtachSocket(entry.sessionId)) return true;
+  // A CLI answer we trust and that does not mention this session means ended —
+  // but only if we actually got one.
+  return false;
+}
+
+// The real state behind a live row: 'busy' | 'idle' | 'waiting' | 'blocked'.
+// Null when the CLI is unreachable or does not know the session, in which case
+// callers fall back to the plain live/ended pair.
+function agentStatus(entry) {
+  const agents = claudeAgentsMap();
+  const a = agents && entry && entry.sessionId ? agents.get(entry.sessionId) : null;
+  return a ? a.status : null;
+}
+const AGENT_STATUS_GLYPH = {
+  busy: '🟢', idle: '🔵', waiting: '🟠', blocked: '🔴', unknown: '🟢',
+};
+function agentStatusGlyph(entry, live) {
+  if (!live) return '⚫';
+  return AGENT_STATUS_GLYPH[agentStatus(entry)] || '🟢';
+}
+
+// Bridge sessions the index does not know about.
+//
+// asana-bridge2 deliberately keeps no hand-maintained index — its whole point
+// is that `claude agents --json` is the truth — so without this the Agent
+// Sessions pane would simply not show its sessions. Any live session whose cwd
+// holds an `.asana-claude.json` marker is a bridge task session, and the marker
+// carries everything a row needs.
+function discoveredAgentSessions() {
+  const agents = claudeAgentsMap();
+  if (!agents) return [];
+  const out = [];
+  for (const a of agents.values()) {
+    if (!a.cwd) continue;
+    let marker;
+    try { marker = JSON.parse(fs.readFileSync(path.join(a.cwd, '.asana-claude.json'), 'utf8')); }
+    catch { continue; }
+    out.push({
+      sessionId: a.sessionId,
+      dir: a.cwd,
+      displayName: path.basename(a.cwd),
+      taskGid: marker.taskGid || null,
+      source: 'bridge2',
+      createdAt: marker.createdAt || (a.startedAt ? new Date(a.startedAt).toISOString() : null),
+    });
+  }
+  return out;
 }
 
 // Our own history of agent sessions, kept beside the bridge's index. The index is
@@ -1787,6 +1913,13 @@ function agentSessions() {
   for (const e of readAgentIndex()) {
     if (e && e.sessionId) byId.set(e.sessionId, { ...byId.get(e.sessionId), ...e });
   }
+  // Sessions no index knows about — asana-bridge2 keeps none by design. Merged
+  // after the index so a session present in both keeps the index's richer
+  // fields, and folded into history like any other, so the row survives as
+  // ⚫ ended once the run finishes.
+  for (const e of discoveredAgentSessions()) {
+    byId.set(e.sessionId, { ...e, ...byId.get(e.sessionId) });
+  }
   const maxAgeMs = (cfg().get('sessionsMaxAgeDays', 7) || 7) * 24 * 3600 * 1000;
   const cutoff = Date.now() - maxAgeMs;
   const merged = [...byId.values()].filter((e) => {
@@ -1826,7 +1959,12 @@ function buildAgentTooltip(entry, live, meta) {
     ? `🖥️ \`tmux -L ${agentSocket()} attach -t ${entry.tmuxName}\``
     : `🖥️ \`dtach -a ${path.join(dtachSocketDir(), entry.sessionId + '.sock')} -E -z -r winch\``);
   metaLines.push(`🆔 \`${entry.sessionId}\``);
-  metaLines.push(live ? '🟢 running' : '⚫ ended');
+  const st = live ? agentStatus(entry) : null;
+  const a = live && claudeAgentsMap() ? claudeAgentsMap().get(entry.sessionId) : null;
+  metaLines.push(live
+    ? `${agentStatusGlyph(entry, true)} running${st && st !== 'unknown' ? ` — ${st}` : ''}` +
+      (a && a.waitingFor ? ` (${a.waitingFor})` : '')
+    : '⚫ ended');
   if (entry.createdAt) metaLines.push(`🕐 started ${new Date(entry.createdAt).toLocaleString()}`);
   return buildTooltip({
     title: entry.displayName,
@@ -1871,8 +2009,12 @@ class AgentSessionsProvider {
     // (older entries: a taskGid). Brand them with the Asana logo so they're
     // identifiable at a glance; keep live/ended via a status glyph in the
     // description since a custom SVG icon can't take a ThemeColor.
-    const isAsana = e.source === 'asana' || !!e.taskGid;
-    item.description = isAsana ? `${live ? '🟢' : '⚫'} ${shortHome(e.dir)}` : shortHome(e.dir);
+    const isAsana = e.source === 'asana' || e.source === 'bridge2' || !!e.taskGid;
+    // The glyph carries the CLI's real state now, not a live/ended boolean:
+    // 🟢 busy · 🔵 idle · 🟠 waiting · 🔴 blocked · ⚫ ended.
+    item.description = isAsana
+      ? `${agentStatusGlyph(e, live)} ${shortHome(e.dir)}`
+      : shortHome(e.dir);
     let meta = null;
     try { meta = readSessionMeta(agentSessionFile(e)); } catch {}
     item.tooltip = buildAgentTooltip(e, live, meta);
