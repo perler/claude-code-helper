@@ -969,68 +969,200 @@ function sanitiseSlug(raw) {
   return words.slice(0, 2).join('-').slice(0, 40);
 }
 
-// The client/project folders a question can be scoped to. Client shortcodes are
-// opaque (BB, RAHR, 2W), so the company name from .agent/agent.json goes to the
-// model too — matching on "BERGMANN" is far safer than on "BB". A leading '#' on
-// a client folder is a quick-find marker, not part of the shortcode.
-function listWorkTargets() {
-  const dirsIn = (root) => {
+// ── the Asana project list ───────────────────────────────────────────────────
+//
+// What the box types most often isn't a coding question, it's "asana <subject>" or
+// "email <subject>". For those the Asana project the item belongs to is what decides
+// the folder, so the project list is part of the routing table, not an afterthought.
+// `asana projects` takes ~0.8s, which is too much to pay on every submit, so the list
+// is cached on disk and refreshed in the background.
+
+function asanaCommand() { return expandHome((cfg().get('asanaCommand') || '').trim()); }
+function asanaCacheFile() { return path.join(os.homedir(), '.cache', 'claude-code-helper', 'asana-projects.json'); }
+
+// `asana projects` prints a grouped text list: "   • BF EDV" then "     ID: 620…".
+function parseAsanaProjects(stdout) {
+  const out = [];
+  let name = null;
+  for (const line of String(stdout || '').split('\n')) {
+    const n = line.match(/^\s*•\s+(.*\S)\s*$/);
+    if (n) { name = n[1]; continue; }
+    const id = line.match(/^\s*ID:\s*(\d+)\s*$/);
+    if (id && name) { out.push({ name, gid: id[1] }); name = null; }
+  }
+  return out;
+}
+
+function loadAsanaProjects() {
+  try { return JSON.parse(fs.readFileSync(asanaCacheFile(), 'utf8')); } catch { return []; }
+}
+
+// Fire-and-forget: a stale list still routes correctly, an absent one only costs the
+// Asana half of the decision, so nothing here is worth blocking or reporting on.
+function refreshAsanaProjects(maxAgeHours) {
+  const cmd = asanaCommand();
+  if (!cmd) return;
+  const file = asanaCacheFile();
+  if (maxAgeHours) {
     try {
-      return fs.readdirSync(root, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('_'))
-        .map((e) => e.name);
-    } catch { return []; }
-  };
-  const clientsRoot = expandHome(cfg().get('clientsDir') || '~/clients');
-  const projectsRoot = expandHome(cfg().get('projectsDir') || '~/projects');
-  const clients = dirsIn(clientsRoot).map((folder) => {
-    let name = '';
-    try {
-      name = JSON.parse(fs.readFileSync(path.join(clientsRoot, folder, '.agent', 'agent.json'), 'utf8')).client_name || '';
+      if ((Date.now() - fs.statSync(file).mtimeMs) < maxAgeHours * 3600e3) return;
     } catch {}
-    return { code: folder.replace(/^#/, ''), dir: path.join(clientsRoot, folder), name };
-  });
-  const projects = dirsIn(projectsRoot).map((name) => ({ name, dir: path.join(projectsRoot, name) }));
-  return { clients, projects };
+  }
+  const tokens = cmd.split(/\s+/);
+  try {
+    cp.execFile(tokens[0], [...tokens.slice(1), 'projects'], { timeout: 30000, maxBuffer: 1 << 22 }, (err, stdout) => {
+      if (err) return;
+      const list = parseAsanaProjects(stdout);
+      if (!list.length) return;
+      try {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(list));
+      } catch {}
+    });
+  } catch {}
+}
+
+// ── the routing table ────────────────────────────────────────────────────────
+
+function clientsRoot() { return expandHome(cfg().get('clientsDir') || '~/clients'); }
+function projectsRoot() { return expandHome(cfg().get('projectsDir') || '~/projects'); }
+
+function dirsIn(root) {
+  try {
+    return fs.readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.') && !e.name.startsWith('_'))
+      .map((e) => e.name);
+  } catch { return []; }
+}
+
+// The directory for a client shortcode. A leading '#' is a quick-find marker, not part
+// of the code, so both spellings are candidates — EEB has both, ~/clients/EEB holding
+// its sessions and ~/clients/#EEB its long-running project folders. When a subfolder is
+// named, the candidate that actually has it wins; otherwise the exact spelling does.
+function clientDir(code, folders, sub) {
+  const root = clientsRoot();
+  const list = (folders || dirsIn(root)).filter((f) => f === code || f.replace(/^#/, '') === code);
+  const candidates = list.sort((a, b) => (a === code ? -1 : b === code ? 1 : 0)).map((f) => path.join(root, f));
+  if (sub) {
+    const withSub = candidates.find((d) => fs.existsSync(path.join(d, sub)));
+    if (withSub) return withSub;
+  }
+  return candidates[0] || null;
+}
+
+function clientName(dir) {
+  try { return JSON.parse(fs.readFileSync(path.join(dir, '.agent', 'agent.json'), 'utf8')).client_name || ''; }
+  catch { return ''; }
+}
+
+// The Asana projects that aren't a client's "<CODE> EDV", and where their work lives.
+const HOUSE_PROJECTS = [
+  { re: /^EEB EDV$/i, code: 'EEB', desc: 'our own business admin' },
+  { re: /Hosting$/, code: 'EEB', sub: 'hosting', desc: 'our servers and hosting' },
+  { re: /^infra$/i, repo: 'infra', desc: 'our own tooling, skills and this workstation' },
+  { re: /AI Sandbox$/i, scratch: true, desc: 'throwaway tests of the Asana tooling' },
+];
+
+// One flat list of everywhere an entry can go. Only the primary "<CODE> EDV" project
+// per client is offered, plus the house ones: sub-projects and retired "… old" ones
+// read as perfectly plausible to a small model and would file work somewhere dead.
+function listTargets() {
+  const folders = dirsIn(clientsRoot());
+  const out = [];
+  for (const p of loadAsanaProjects()) {
+    if (/\bold\b/i.test(p.name)) continue;
+    const house = HOUSE_PROJECTS.find((h) => h.re.test(p.name));
+    let dir = null, create = true, desc = '';
+    if (house) {
+      desc = house.desc;
+      if (house.repo) { dir = path.join(projectsRoot(), house.repo); create = false; }
+      else if (!house.scratch) {
+        const c = clientDir(house.code, folders, house.sub);
+        if (!c) continue;
+        dir = house.sub ? path.join(c, house.sub) : c;
+      }
+    } else {
+      // "BF EDV", plus the one irregular "WD - EDV".
+      const m = p.name.match(/^([A-Z0-9]+)\s+(?:-\s+)?EDV$/);
+      if (!m) continue;
+      dir = clientDir(m[1], folders);
+      if (!dir) continue;
+      // Shortcodes are opaque (BB, RAHR, 2W), so the company name goes to the model
+      // too — matching on "BERGMANN" is far safer than on "BB".
+      desc = clientName(dir) || `client ${m[1]}`;
+    }
+    out.push({ id: `asana:${p.gid}`, name: p.name, gid: p.gid, dir, create, desc });
+  }
+  const taken = new Set(out.map((t) => t.dir).filter(Boolean));
+  for (const name of dirsIn(projectsRoot())) {
+    const dir = path.join(projectsRoot(), name);
+    if (taken.has(dir)) continue;   // 'infra' is already in as its Asana project
+    out.push({ id: `repo:${name}`, name, dir, create: false, desc: 'local dev project — session runs in the repo' });
+  }
+  return out;
+}
+
+function findTarget(id) {
+  const want = String(id || '').trim().toLowerCase();
+  if (!want || want === 'none') return null;
+  return listTargets().find((t) => t.id.toLowerCase() === want) || null;
 }
 
 // Ask a cheap model, in one headless call (`claude -p`, so it reuses the CLI's own
-// auth — no API key to manage), for both a two-word folder name and which client or
-// project the question belongs to. cwd is a temp dir so the call doesn't drag in a
-// project's CLAUDE.md. Resolves {slug:'', target:null} on any failure or timeout;
-// the caller then falls back to a timestamp folder under the scratch dir, which the
-// existing auto-rename sweep later renames to the ai-title anyway.
+// auth — no API key to manage), for what the entry is, where it belongs and a two-word
+// folder name — all three in one round trip, so intent detection costs nothing on top
+// of the naming call that already ran. cwd is a temp dir so the call doesn't drag in a
+// project's CLAUDE.md. Resolves to a bare scratch plan on any failure or timeout.
 function generateSessionPlan(question) {
   return new Promise((resolve) => {
-    const { clients, projects } = listWorkTargets();
-    const none = { slug: '', target: null };
+    const targets = listTargets();
+    const none = { slug: '', kind: 'session', target: null };
+    // Asana projects get a line each — the client name is what makes an opaque
+    // shortcode matchable. Repos are just names, on one line: spelling out "local dev
+    // project" 58 times cost more latency than it ever bought in accuracy.
+    const asana = targets.filter((t) => t.id.startsWith('asana:'));
+    const repos = targets.filter((t) => t.id.startsWith('repo:'));
     const prompt = [
-      'Name a new coding-session folder and decide which client or project the question belongs to.',
+      'Route one entry from a "New Task" box.',
       '',
-      'Question:', question, '',
-      'Clients (shortcode — name):',
-      ...clients.map((c) => `${c.code}${c.name ? ' — ' + c.name : ''}`),
+      'Entry:', question, '',
+      'Asana projects — "<id> — <project> — <client or subject>":',
+      ...asana.map((t) => `${t.id} — ${t.name} — ${t.desc}`),
       '',
-      'Projects:',
-      ...projects.map((p) => p.name),
+      'Local dev repos, id is "repo:<name>":',
+      repos.map((t) => t.name).join(', '),
       '',
       'Reply with ONLY a JSON object, no prose, no code fence:',
-      '{"slug":"<two words>","target":"client:<shortcode>" | "project:<name>" | "none"}',
+      '{"kind":"asana"|"email"|"session","target":"<id>"|"none","slug":"<two words>"}',
       '',
       'Rules:',
-      '- slug: exactly two lowercase words joined by a hyphen, summarising the question.',
-      '- target must be copied verbatim from the lists above, or "none".',
-      '- Use "none" unless the question names or unmistakably refers to that client or project.',
+      '- kind "asana": something to be filed as a task or remembered — a to-do, a reminder,',
+      '  a note to follow up. Often written as "asana <subject>".',
+      '- kind "email": a mail to be written to somebody. Often written as "email <subject>",',
+      '  or names a recipient ("an Herrn Wagner", "reply to ...", an address).',
+      '- kind "session": actual work to do right now — a question, a bug, a change to make.',
+      '- target must be an id from the lists above, copied verbatim, or "none".',
+      '- An "asana" or "email" entry belongs to the asana: target whose client or subject it',
+      '  is about — that is the Asana project it will be filed in.',
+      '- A "session" entry belongs to a repo: target when it names one, otherwise to the',
+      '  asana: target for the client it is about.',
       '- Shortcodes that merely look alike (RAH vs RAHR, PR vs PRX) are unrelated clients.',
       '  Never guess from a resemblance — prefer "none".',
+      '- slug: exactly two lowercase words joined by a hyphen, summarising the entry.',
     ].join('\n');
     const tokens = (cfg().get('claudeCommand') || 'claude').trim().split(/\s+/);
     let child;
     try {
       child = cp.execFile(
-        tokens[0], [...tokens.slice(1), '-p', prompt, '--model', titleModel()],
+        tokens[0],
+        [
+          ...tokens.slice(1), '-p', prompt, '--model', titleModel(),
+          // This call classifies one line of text: it has no use for MCP servers,
+          // hooks or tools, and booting them cost ~2.5s of the wait (measured).
+          '--strict-mcp-config', '--settings', '{}',
+        ],
         { cwd: os.tmpdir(), timeout: 40000, maxBuffer: 1 << 20 },
-        (err, stdout) => resolve(err ? none : parseSessionPlan(stdout, clients, projects))
+        (err, stdout) => resolve(err ? none : parseSessionPlan(stdout, targets))
       );
     } catch { resolve(none); return; }
     child.on('error', () => resolve(none));
@@ -1040,25 +1172,28 @@ function generateSessionPlan(question) {
   });
 }
 
-// A target only counts if it matches a directory we actually scanned — a model that
-// invents or misremembers a shortcode must degrade to the scratch folder, never write
-// into some other client's directory.
-function parseSessionPlan(stdout, clients, projects) {
-  const out = { slug: '', target: null };
+// A target only counts if it matches one we actually offered — a model that invents or
+// misremembers a shortcode must degrade to the scratch folder, never write into some
+// other client's directory.
+function parseSessionPlan(stdout, targets) {
+  const out = { slug: '', kind: 'session', target: null };
   const m = String(stdout || '').match(/\{[\s\S]*\}/);
   if (!m) return out;
   let obj; try { obj = JSON.parse(m[0]); } catch { return out; }
   out.slug = sanitiseSlug(obj.slug);
-  const t = String(obj.target || '').trim();
-  if (t.startsWith('client:')) {
-    const code = t.slice('client:'.length).trim();
-    const c = clients.find((x) => x.code.toLowerCase() === code.toLowerCase());
-    if (c) out.target = { kind: 'client', dir: c.dir, desc: `${c.code}${c.name ? ' — ' + c.name : ''}`, create: true };
-  } else if (t.startsWith('project:')) {
-    const name = t.slice('project:'.length).trim();
-    const p = projects.find((x) => x.name.toLowerCase() === name.toLowerCase());
-    if (p) out.target = { kind: 'project', dir: p.dir, desc: 'existing project — session runs in the repo', create: false };
-  }
+  const kind = String(obj.kind || '').trim().toLowerCase();
+  if (kind === 'asana' || kind === 'email') out.kind = kind;
+  // The id as asked for, but also the shapes the model reaches for on its own: a bare
+  // gid, or a bare repo/project name. Anything that doesn't resolve to a target we
+  // actually offered degrades to the scratch folder — a misremembered shortcode must
+  // never write into some other client's directory.
+  const want = String(obj.target || '').trim().toLowerCase();
+  out.target = want && want !== 'none'
+    ? targets.find((t) => t.id.toLowerCase() === want)
+      || targets.find((t) => t.gid === want)
+      || targets.find((t) => t.name.toLowerCase() === want.replace(/^(asana|repo|project|client):/, ''))
+      || null
+    : null;
   return out;
 }
 
@@ -1070,39 +1205,81 @@ function uniqueDir(dir) {
   return cand;
 }
 
-// Start a session whose first prompt is the user's question, in the client or
-// project folder the model matched (confirmed first), else a titled scratch folder.
-async function askClaudeSession(question, onState) {
+const KIND_LABEL = { asana: 'Asana task', email: 'Email', session: 'Session' };
+
+// Turn the raw entry into the session's first prompt. A "session" entry is passed
+// through untouched — it already says what it wants. The other two are the typing the
+// box exists to save: the verb and the destination are stated here instead.
+function decoratePrompt(q, kind, target) {
+  if (kind === 'asana') {
+    const where = target && target.gid ? `Asana project "${target.name}" (${target.gid})` : 'the right Asana project';
+    return [
+      `Create an Asana task in ${where}, following the conventions in CLAUDE.md.`,
+      'Search that project for an existing task on this first — if there is one, comment there instead.',
+      'Report the task link when done.',
+      '', 'Task:', q,
+    ].join('\n');
+  }
+  if (kind === 'email') {
+    const about = target ? ` It concerns ${target.desc || target.name}.` : '';
+    return [
+      `Draft this email with the email-writing skill, then show it and wait for approval — nothing is sent unprompted.${about}`,
+      '', 'Mail:', q,
+    ].join('\n');
+  }
+  return q;
+}
+
+function scratchTarget(slug) {
+  return { id: 'none', name: 'Scratch', dir: path.join(expandHome(cfg().get('scratchDir') || '~/tasks'), slug), create: true, desc: 'unscoped scratch folder' };
+}
+
+// Where the session actually runs. A client or house target is a home for many
+// sessions, so each entry gets its own slug subfolder; a repo target IS the workspace.
+function targetDir(target, slug) {
+  if (!target || !target.dir) return scratchTarget(slug).dir;
+  return target.create ? path.join(target.dir, slug) : target.dir;
+}
+
+// Start a session whose first prompt is the user's entry, in the folder the Asana
+// project (or repo) it was routed to implies. The proposal is shown in the box itself
+// and confirmed there: shortcodes are easy to confuse and a wrong guess would write
+// into another client's directory, so a match is never assumed.
+async function askClaudeSession(question, io) {
   const q = String(question || '').trim();
   if (!q) return;
   // refocus: put the cursor back in the box on the way to idle. Right after a
   // cancellation that is what the user wants; right after a launch it would steal
   // focus from the terminal the session just opened in.
-  const state = (s, refocus) => { try { onState && onState(s, refocus); } catch {} };
+  const state = (s, refocus) => { try { io && io.state && io.state(s, refocus); } catch {} };
   state('naming');
+  refreshAsanaProjects(12);
   const plan = await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Window, title: 'Claude: naming session…' },
+    { location: vscode.ProgressLocation.Window, title: 'Claude: routing task…' },
     () => generateSessionPlan(q)
   );
   const slug = plan.slug || timestampName();
-  const scratch = { dir: path.join(expandHome(cfg().get('scratchDir') || '~/tasks'), slug), desc: 'unscoped scratch folder', create: true };
-  let choice = scratch;
-  if (plan.target) {
-    // Client shortcodes are easy to confuse and a wrong guess would write into
-    // another client's directory, so a match is always confirmed, never assumed.
-    const proposed = plan.target.kind === 'client'
-      ? { ...plan.target, dir: path.join(plan.target.dir, slug) }
-      : plan.target;
-    state('choosing');
-    const pick = await vscode.window.showQuickPick(
-      [proposed, scratch].map((t) => ({ label: `$(folder) ${shortHome(t.dir)}`, description: t.desc, target: t })),
-      { placeHolder: 'Start the session where?' }
-    );
-    if (!pick) { state('idle', true); return; }
-    choice = pick.target;
+  let kind = plan.kind;
+  let target = plan.target || scratchTarget(slug);
+
+  for (;;) {
+    const reply = await io.propose({
+      kind,
+      kindLabel: KIND_LABEL[kind],
+      target: target.name,
+      dir: shortHome(targetDir(target, slug)),
+    });
+    if (!reply || reply.type === 'cancel') { state('idle', true); return; }
+    // Tab cycles the intent in the box, so any reply can carry a changed one — including
+    // the one that only asks for the folder picker.
+    if (reply.kind && KIND_LABEL[reply.kind]) kind = reply.kind;
+    if (reply.type !== 'pickTarget') break;
+    const picked = await pickTarget(slug);
+    if (picked) target = picked;
   }
-  const dir = choice.create ? uniqueDir(choice.dir) : choice.dir;
-  if (choice.create) {
+
+  const dir = target.create ? uniqueDir(targetDir(target, slug)) : target.dir;
+  if (target.create) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch (e) {
@@ -1114,10 +1291,26 @@ async function askClaudeSession(question, onState) {
   state('launching');
   let started = false;
   try {
-    started = !!(await launchClaude({ path: dir, label: path.basename(dir) }, false, { skipNamePrompt: true, initialPrompt: q }));
+    started = !!(await launchClaude(
+      { path: dir, label: path.basename(dir) }, false,
+      { skipNamePrompt: true, initialPrompt: decoratePrompt(q, kind, target) }
+    ));
   } finally {
     state('idle', !started);
   }
+}
+
+// The override behind Shift+Tab: the full routing table, filterable, scratch first.
+async function pickTarget(slug) {
+  const scratch = scratchTarget(slug);
+  const items = [scratch, ...listTargets()].map((t) => ({
+    label: `$(folder) ${t.name}`,
+    description: shortHome(targetDir(t, slug)),
+    detail: t.desc,
+    target: t,
+  }));
+  const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Where does this belong?', matchOnDetail: true });
+  return pick ? pick.target : null;
 }
 
 function favFromUri(uri) {
@@ -1256,10 +1449,22 @@ class AskViewProvider {
     view.webview.options = { enableScripts: true };
     view.webview.html = this._html(view.webview);
     view.webview.onDidReceiveMessage((msg) => {
-      if (!msg || msg.type !== 'ask') return;
-      askClaudeSession(msg.text, (s, refocus) => {
-        try { view.webview.postMessage({ type: 'state', state: s, refocus: !!refocus }); } catch {}
-      });
+      if (!msg) return;
+      const post = (m) => { try { view.webview.postMessage(m); } catch {} };
+      if (msg.type === 'ask') {
+        askClaudeSession(msg.text, {
+          state: (s, refocus) => post({ type: 'state', state: s, refocus: !!refocus }),
+          // The proposal is a question to the box: it resolves when the user accepts
+          // it, changes the intent, asks for the folder picker, or cancels.
+          propose: (p) => new Promise((resolve) => { this._answer = resolve; post({ type: 'propose', ...p }); }),
+        });
+        return;
+      }
+      if (this._answer && (msg.type === 'confirm' || msg.type === 'cancel' || msg.type === 'pickTarget')) {
+        const answer = this._answer;
+        this._answer = null;
+        answer(msg);
+      }
     });
   }
   _html(webview) {
@@ -1277,7 +1482,15 @@ class AskViewProvider {
   textarea:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
   textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
   textarea:disabled { opacity: .6; }
+  textarea[readonly] { opacity: .8; }
   #hint { margin-top: 4px; color: var(--vscode-descriptionForeground); font-size: 11px; min-height: 15px; }
+  /* The routing proposal: intent and destination on one line, so accepting it is a
+     glance and an Enter rather than a dialog. */
+  #plan { margin-top: 4px; font-size: 11px; display: none; }
+  #plan.on { display: block; }
+  #kind { color: var(--vscode-textLink-foreground); font-weight: 600; }
+  #dest { color: var(--vscode-foreground); }
+  #dir { color: var(--vscode-descriptionForeground); word-break: break-all; }
   /* Indeterminate bar, VS Code's own: a slice sliding across a dim track. Naming
      takes ~10s, so the wait needs to look like progress, not like a hang. */
   #bar { height: 2px; margin-top: 4px; overflow: hidden; display: none; }
@@ -1287,13 +1500,26 @@ class AskViewProvider {
 </style></head><body>
 <textarea id="q" rows="2" placeholder="Ask Claude…"></textarea>
 <div id="bar"><div></div></div>
+<div id="plan">→ <span id="kind"></span> · <span id="dest"></span><br><span id="dir"></span></div>
 <div id="hint">Enter to start a session · Shift+Enter for a new line</div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const q = document.getElementById('q');
   const hint = document.getElementById('hint');
   const bar = document.getElementById('bar');
+  const plan = document.getElementById('plan');
+  const kindEl = document.getElementById('kind');
+  const destEl = document.getElementById('dest');
+  const dirEl = document.getElementById('dir');
   const IDLE = 'Enter to start a session · Shift+Enter for a new line';
+  const CONFIRM = 'Enter start · Tab intent · Shift+Tab folder · Esc cancel';
+  const KINDS = ['asana', 'email', 'session'];
+  const KIND_LABEL = { asana: 'Asana task', email: 'Email', session: 'Session' };
+  // Non-null exactly while a routing proposal is on screen; it is also the intent
+  // that will be sent back, so Tab can cycle it without another round trip.
+  let planKind = null;
+  const clearPlan = () => { planKind = null; plan.classList.remove('on'); q.readOnly = false; };
+  const answer = (msg) => { clearPlan(); vscode.postMessage(msg); };
   let tick = null, t0 = 0, label = '';
   const stopTick = () => { if (tick) { clearInterval(tick); tick = null; } };
   // Elapsed seconds alongside the bar — a concrete number reads as "still working"
@@ -1307,6 +1533,17 @@ class AskViewProvider {
   const grow = () => { q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; };
   q.addEventListener('input', grow);
   q.addEventListener('keydown', (e) => {
+    if (planKind) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); answer({ type: 'confirm', kind: planKind }); }
+      else if (e.key === 'Tab' && !e.shiftKey) {
+        e.preventDefault();
+        planKind = KINDS[(KINDS.indexOf(planKind) + 1) % KINDS.length];
+        kindEl.textContent = KIND_LABEL[planKind];
+      }
+      else if (e.key === 'Tab') { e.preventDefault(); answer({ type: 'pickTarget', kind: planKind }); }
+      else if (e.key === 'Escape') { e.preventDefault(); answer({ type: 'cancel' }); }
+      return;
+    }
     if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
     const text = q.value.trim();
@@ -1315,12 +1552,28 @@ class AskViewProvider {
   });
   window.addEventListener('message', (e) => {
     const m = e.data || {};
+    if (m.type === 'propose') {
+      stopTick();
+      bar.classList.remove('on');
+      planKind = m.kind;
+      kindEl.textContent = m.kindLabel;
+      destEl.textContent = m.target;
+      dirEl.textContent = m.dir;
+      plan.classList.add('on');
+      hint.textContent = CONFIRM;
+      // Readonly rather than disabled: a disabled textarea can't take focus, and the
+      // proposal is answered with keys typed at this box.
+      q.disabled = false;
+      q.readOnly = true;
+      q.focus();
+      return;
+    }
     if (m.type !== 'state') return;
+    clearPlan();
     const busy = m.state !== 'idle';
     q.disabled = busy;
     bar.classList.toggle('on', busy);
-    if (m.state === 'naming') startTick('Naming session…');
-    else if (m.state === 'choosing') startTick('Confirm where to start…');
+    if (m.state === 'naming') startTick('Routing task…');
     else if (m.state === 'launching') startTick('Starting Claude…');
     // Focus only when the extension says nothing started. A launch ends with the new
     // session's terminal focused, and focusing this textarea would pull the cursor
@@ -2315,6 +2568,7 @@ function activate(context) {
   context.subscriptions.push(vscode.window.registerWebviewViewProvider(
     'claudeHelper.ask', new AskViewProvider(), { webviewOptions: { retainContextWhenHidden: true } }
   ));
+  refreshAsanaProjects(12);   // warm the New Task routing table; never blocks a submit
 
   favProvider = new FavouritesProvider(context);
   const favView = vscode.window.createTreeView('claudeHelper.favourites', {

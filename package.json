@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.15.3",
+  "version": "0.17.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -813,6 +813,11 @@
           "type": "string",
           "default": "claude-haiku-4-5-20251001",
           "description": "Model used to name a New Task session and match it to a client or project."
+        },
+        "claudeHelper.asanaCommand": {
+          "type": "string",
+          "default": "~/tools/asana/asana",
+          "description": "Asana CLI used to list projects for New Task routing. The project list is cached in ~/.cache/claude-code-helper and refreshed in the background, so a submit never waits on it. Empty = no Asana routing (folders are then matched from client directories only)."
         },
         "claudeHelper.clientsDir": {
           "type": "string",
