@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -813,6 +813,11 @@
           "type": "string",
           "default": "claude-haiku-4-5-20251001",
           "description": "Model used to name a New Task session and match it to a client or project."
+        },
+        "claudeHelper.apiKeyFile": {
+          "type": "string",
+          "default": "~/.env",
+          "description": "File read for ANTHROPIC_API_KEY, used to route New Task entries straight through the API (~1s instead of ~9s via the CLI). ANTHROPIC_API_KEY in the environment wins over this file. With neither, routing falls back to `claude -p`, which needs no key."
         },
         "claudeHelper.asanaCommand": {
           "type": "string",

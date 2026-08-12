@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const cp = require('child_process');
 const crypto = require('crypto');
+const https = require('https');
 
 // ─── shared ──────────────────────────────────────────────────────────────────
 
@@ -1108,15 +1109,112 @@ function findTarget(id) {
   return listTargets().find((t) => t.id.toLowerCase() === want) || null;
 }
 
-// Ask a cheap model, in one headless call (`claude -p`, so it reuses the CLI's own
-// auth — no API key to manage), for what the entry is, where it belongs and a two-word
-// folder name — all three in one round trip, so intent detection costs nothing on top
-// of the naming call that already ran. cwd is a temp dir so the call doesn't drag in a
-// project's CLAUDE.md. Resolves to a bare scratch plan on any failure or timeout.
-function generateSessionPlan(question) {
+// The key for the routing calls, from the environment or, since the extension host
+// doesn't inherit a login shell's env, from an env file. Never logged.
+function apiKey() {
+  if (process.env.ANTHROPIC_API_KEY) return process.env.ANTHROPIC_API_KEY;
+  try {
+    const file = expandHome(cfg().get('apiKeyFile') || '~/.env');
+    const m = fs.readFileSync(file, 'utf8').match(/^[ \t]*(?:export[ \t]+)?ANTHROPIC_API_KEY[ \t]*=[ \t]*(.+?)[ \t]*$/m);
+    return m ? m[1].replace(/^["']|["']$/g, '') : '';
+  } catch { return ''; }
+}
+
+// Routing is one small Haiku call. Through `claude -p` it took ~9s, almost all of it
+// the CLI booting around a request the API answers in ~1.1s (both measured on the same
+// prompt). So the API is the path, and the CLI stays as the fallback for when no key is
+// configured or the request fails — it needs no key of its own.
+async function askModel(prompt, system) {
+  const key = apiKey();
+  if (key) {
+    const out = await askApi(prompt, key, system);
+    if (out) return out;
+  }
+  return askModelCli(prompt, system);
+}
+
+function askApi(prompt, key, system) {
   return new Promise((resolve) => {
-    const targets = listTargets();
-    const none = { slug: '', kind: 'session', target: null };
+    const body = JSON.stringify({
+      model: titleModel(),
+      max_tokens: 200,
+      // The CLI wraps these calls in a system prompt of its own; the API sends exactly
+      // what it is given, and without one the model is markedly looser — the folder
+      // matcher accepted a new-printer note as a continuation of a USB-copy folder.
+      ...(system ? { system } : {}),
+      // The API defaults to temperature 1, which the CLI does not. Left at the default
+      // these calls get creative: the folder matcher started accepting a printer task
+      // as a continuation of a USB-copy folder. Classification wants no creativity.
+      temperature: 0,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    let req;
+    try {
+      req = https.request({
+        hostname: 'api.anthropic.com', path: '/v1/messages', method: 'POST', timeout: 20000,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body),
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+      }, (res) => {
+        let data = '';
+        res.on('data', (c) => { data += c; });
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(data);
+            resolve(j && j.content && j.content[0] && j.content[0].text ? String(j.content[0].text) : '');
+          } catch { resolve(''); }
+        });
+      });
+    } catch { resolve(''); return; }
+    req.on('error', () => resolve(''));
+    req.on('timeout', () => { try { req.destroy(); } catch {} resolve(''); });
+    req.end(body);
+  });
+}
+
+// cwd is a temp dir so the call doesn't drag in a project's CLAUDE.md, and MCP servers,
+// hooks and tools stay unloaded — this classifies one line of text and has no use for
+// any of them (worth ~2.5s of the CLI's boot, measured).
+function askModelCli(prompt, system) {
+  return new Promise((resolve) => {
+    const tokens = (cfg().get('claudeCommand') || 'claude').trim().split(/\s+/);
+    const text = system ? `${system}\n\n${prompt}` : prompt;
+    let child;
+    try {
+      child = cp.execFile(
+        tokens[0],
+        [...tokens.slice(1), '-p', text, '--model', titleModel(), '--strict-mcp-config', '--settings', '{}'],
+        { cwd: os.tmpdir(), timeout: 40000, maxBuffer: 1 << 20 },
+        (err, stdout) => resolve(err ? '' : String(stdout || ''))
+      );
+    } catch { resolve(''); return; }
+    child.on('error', () => resolve(''));
+    // `claude -p` reads stdin for piped input and waits on it; execFile leaves the
+    // pipe open, so without this the call stalls until the timeout every time.
+    try { child.stdin.end(); } catch {}
+  });
+}
+
+// What the entry is, where it belongs and a two-word folder name in one round trip, then
+// whether it continues work that already has a folder. Degrades to a bare scratch plan
+// on any failure or timeout.
+async function generateSessionPlan(question) {
+  refreshAsanaProjects(12);
+  const targets = listTargets();
+  const routeSystem = 'You route a short work note to one destination from a fixed list. '
+    + 'You reply with exactly one JSON object and nothing else. Ids are copied character-for-character '
+    + 'from the list you were given; you never invent one, and you answer "none" rather than guess.';
+  const plan = parseSessionPlan(await askModel(routingPrompt(question, targets), routeSystem), targets);
+  plan.slug = plan.slug || timestampName();
+  plan.existing = await findExistingFolder(question, plan);
+  return plan;
+}
+
+function routingPrompt(question, targets) {
+  {
     // Asana projects get a line each — the client name is what makes an opaque
     // shortcode matchable. Repos are just names, on one line: spelling out "local dev
     // project" 58 times cost more latency than it ever bought in accuracy.
@@ -1150,26 +1248,59 @@ function generateSessionPlan(question) {
       '  Never guess from a resemblance — prefer "none".',
       '- slug: exactly two lowercase words joined by a hyphen, summarising the entry.',
     ].join('\n');
-    const tokens = (cfg().get('claudeCommand') || 'claude').trim().split(/\s+/);
-    let child;
-    try {
-      child = cp.execFile(
-        tokens[0],
-        [
-          ...tokens.slice(1), '-p', prompt, '--model', titleModel(),
-          // This call classifies one line of text: it has no use for MCP servers,
-          // hooks or tools, and booting them cost ~2.5s of the wait (measured).
-          '--strict-mcp-config', '--settings', '{}',
-        ],
-        { cwd: os.tmpdir(), timeout: 40000, maxBuffer: 1 << 20 },
-        (err, stdout) => resolve(err ? none : parseSessionPlan(stdout, targets))
-      );
-    } catch { resolve(none); return; }
-    child.on('error', () => resolve(none));
-    // `claude -p` reads stdin for piped input and waits on it; execFile leaves the
-    // pipe open, so without this the call stalls until the timeout every time.
-    try { child.stdin.end(); } catch {}
-  });
+    return prompt;
+  }
+}
+
+// Coming back to a task or a mail should land in the folder it already has, not beside
+// it. Past entries left their slug as a folder name under the same target, so this is a
+// name-matching question — one more ~1s call on top of the routing. Only targets that
+// hold one folder per piece of work are searched; a repo target IS the working directory.
+async function findExistingFolder(question, plan) {
+  const root = plan.target
+    ? (plan.target.create ? plan.target.dir : null)
+    : expandHome(cfg().get('scratchDir') || '~/tasks');
+  if (!root) return null;
+  const folders = dirsIn(root)
+    .map((name) => {
+      let mtime = 0;
+      try { mtime = fs.statSync(path.join(root, name)).mtimeMs; } catch {}
+      return { name, mtime };
+    })
+    .sort((a, b) => b.mtime - a.mtime)
+    .slice(0, 60);
+  if (!folders.length) return null;
+  // The slug is generated from the entry, so the same subject twice often names the
+  // same folder — worth checking for free before asking.
+  const exact = folders.find((f) => f.name === plan.slug);
+  if (exact) return path.join(root, exact.name);
+  // Worked examples do the heavy lifting here: "same client, different subject" is the
+  // mistake this call makes, and stating the rule abstractly was not enough to stop it.
+  const system = [
+    'You match a short work note against a list of existing folder names.',
+    'You reply with exactly one line and nothing else: either a folder name copied',
+    'character-for-character from the list, or the single word none.',
+    'You are strict. A folder is only a match when it names the SAME specific thing the',
+    'note is about — the same machine, ticket, document, person or fault. Sharing a',
+    'client, a technology or a general area is not a match. When in any doubt: none.',
+  ].join(' ');
+  const prompt = [
+    'Work note:', question, '',
+    'Existing folders:',
+    ...folders.map((f) => f.name),
+    '',
+    'Examples of the judgement:',
+    '- note "the VPN keeps dropping at DRM", folder "vpn-restart-problem" → vpn-restart-problem (same fault)',
+    '- note "DRM needs a new Exchange connector", folder "DRM-webserverinstall" → none (both DRM, different subject)',
+    '- note "set up the new printer", folder "rahr-usb-copy" → none (both hardware, different device)',
+    '',
+    'Which folder is this note a continuation of? Reply with the folder name, or none.',
+  ].join('\n');
+  const answer = (await askModel(prompt, system)).trim().split('\n').filter(Boolean).pop() || '';
+  const want = answer.trim().replace(/^[`'"]+|[`'".]+$/g, '').toLowerCase();
+  if (!want || want === 'none') return null;
+  const hit = folders.find((f) => f.name.toLowerCase() === want);
+  return hit ? path.join(root, hit.name) : null;
 }
 
 // A target only counts if it matches one we actually offered — a model that invents or
@@ -1253,7 +1384,6 @@ async function askClaudeSession(question, io) {
   // focus from the terminal the session just opened in.
   const state = (s, refocus) => { try { io && io.state && io.state(s, refocus); } catch {} };
   state('naming');
-  refreshAsanaProjects(12);
   const plan = await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Window, title: 'Claude: routing task…' },
     () => generateSessionPlan(q)
@@ -1261,25 +1391,31 @@ async function askClaudeSession(question, io) {
   const slug = plan.slug || timestampName();
   let kind = plan.kind;
   let target = plan.target || scratchTarget(slug);
+  let existing = plan.existing;
 
   for (;;) {
     const reply = await io.propose({
       kind,
       kindLabel: KIND_LABEL[kind],
       target: target.name,
-      dir: shortHome(targetDir(target, slug)),
+      dir: shortHome(existing || targetDir(target, slug)),
+      existing: !!existing,
     });
     if (!reply || reply.type === 'cancel') { state('idle', true); return; }
     // Tab cycles the intent in the box, so any reply can carry a changed one — including
     // the one that only asks for the folder picker.
     if (reply.kind && KIND_LABEL[reply.kind]) kind = reply.kind;
     if (reply.type !== 'pickTarget') break;
+    // Reaching for the picker is how you say "not that folder", so a proposed
+    // continuation is dropped: pick the same target again and you get a fresh one.
+    existing = null;
     const picked = await pickTarget(slug);
     if (picked) target = picked;
   }
 
-  const dir = target.create ? uniqueDir(targetDir(target, slug)) : target.dir;
-  if (target.create) {
+  const create = !existing && target.create;
+  const dir = existing || (create ? uniqueDir(targetDir(target, slug)) : target.dir);
+  if (create) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch (e) {
@@ -1288,12 +1424,16 @@ async function askClaudeSession(question, io) {
       return;
     }
   }
+  // Continuing into a folder that already holds a session resumes it rather than
+  // starting a second one beside it — and a resumed session already knows what it is
+  // working on, so it gets the entry as typed, without the framing a cold start needs.
+  const resume = !!existing && listSessions(dir).length > 0;
   state('launching');
   let started = false;
   try {
     started = !!(await launchClaude(
-      { path: dir, label: path.basename(dir) }, false,
-      { skipNamePrompt: true, initialPrompt: decoratePrompt(q, kind, target) }
+      { path: dir, label: path.basename(dir) }, resume,
+      { skipNamePrompt: true, initialPrompt: resume ? q : decoratePrompt(q, kind, target) }
     ));
   } finally {
     state('idle', !started);
@@ -1513,6 +1653,7 @@ class AskViewProvider {
   const dirEl = document.getElementById('dir');
   const IDLE = 'Enter to start a session · Shift+Enter for a new line';
   const CONFIRM = 'Enter start · Tab intent · Shift+Tab folder · Esc cancel';
+  const CONTINUE = 'Enter continue · Tab intent · Shift+Tab new folder · Esc cancel';
   const KINDS = ['asana', 'email', 'session'];
   const KIND_LABEL = { asana: 'Asana task', email: 'Email', session: 'Session' };
   // Non-null exactly while a routing proposal is on screen; it is also the intent
@@ -1558,9 +1699,9 @@ class AskViewProvider {
       planKind = m.kind;
       kindEl.textContent = m.kindLabel;
       destEl.textContent = m.target;
-      dirEl.textContent = m.dir;
+      dirEl.textContent = (m.existing ? 'continue in ' : '') + m.dir;
       plan.classList.add('on');
-      hint.textContent = CONFIRM;
+      hint.textContent = m.existing ? CONTINUE : CONFIRM;
       // Readonly rather than disabled: a disabled textarea can't take focus, and the
       // proposal is answered with keys typed at this box.
       q.disabled = false;
@@ -1578,7 +1719,13 @@ class AskViewProvider {
     // Focus only when the extension says nothing started. A launch ends with the new
     // session's terminal focused, and focusing this textarea would pull the cursor
     // straight back out of it — the box would swallow the first thing typed at Claude.
-    else { stopTick(); hint.textContent = IDLE; q.value = ''; grow(); if (m.refocus) q.focus(); }
+    else {
+      stopTick(); hint.textContent = IDLE;
+      // refocus means nothing launched — a cancel or a failure — so the text stays
+      // put and the cursor goes back to it. A launched session takes the text with it.
+      if (m.refocus) q.focus();
+      else { q.value = ''; grow(); }
+    }
   });
 </script></body></html>`;
   }
