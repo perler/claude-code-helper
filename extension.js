@@ -131,11 +131,34 @@ function launchIcon(resumeArg) {
   return new vscode.ThemeIcon(resumeArg ? 'history' : 'sparkle');
 }
 
+// With terminal.integrated.defaultLocation=editor a new terminal opens as an editor
+// tab, and VS Code inserts it next to the active one (workbench.editor.openPositioning
+// defaults to "right") — so a launch lands in the middle of the tab strip. Push it to
+// the far right instead.
+//
+// Only ever moves a tab that IS a terminal: when the terminal opened in the panel the
+// active tab is still whatever file the user was editing, and moving that would shuffle
+// their editors. show() activates the tab asynchronously, hence the short poll.
+async function moveTerminalTabToEnd() {
+  for (let i = 0; i < 20; i++) {
+    const group = vscode.window.tabGroups.activeTabGroup;
+    const tab = group && group.activeTab;
+    if (tab && tab.input instanceof vscode.TabInputTerminal) {
+      if (group.tabs.indexOf(tab) < group.tabs.length - 1)
+        await vscode.commands.executeCommand('moveActiveEditor', { to: 'last', by: 'tab' });
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
 function runInInternalTerminal(name, cwd, cmd, icon) {
   let terminal;
   if (cfg().get('reuseTerminal')) terminal = findReusableTerminal(cwd);
+  const created = !terminal;
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd, iconPath: icon });
   terminal.show();
+  if (created) moveTerminalTabToEnd();
   terminal.sendText(cmd);
   return terminal;
 }
@@ -603,8 +626,10 @@ function launchClaudeTmux(fav, resumeArg, initialPrompt) {
   // name = bare folder/label so VS Code drops the duplicate ${cwdFolder} description.
   const name = fav.label || path.basename(dir);
   let terminal = cfg().get('reuseTerminal') ? findReusableTerminal(dir) : null;
+  const created = !terminal;
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir, iconPath: launchIcon(resumeArg) });
   terminal.show();
+  if (created) moveTerminalTabToEnd();
   terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
   registerSessionTerminal(id, terminal);
   return terminal;
@@ -688,8 +713,10 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   // name = bare folder/label so VS Code drops the duplicate ${cwdFolder} description.
   const name = fav.label || path.basename(dir);
   let terminal = cfg().get('reuseTerminal') ? findReusableTerminal(dir) : null;
+  const created = !terminal;
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir, iconPath: launchIcon(resumeArg) });
   terminal.show();
+  if (created) moveTerminalTabToEnd();
   // Create the master detached (no controlling terminal), then attach a client.
   // This keeps the claude process's lifetime fully independent of this code-server
   // terminal — parity with the Asana bridge's `dtach -n` — instead of `dtach -A`,
@@ -2490,8 +2517,10 @@ function attachAgentSession(node) {
   }
   const name = `▶ ${e.displayName}`;
   let terminal = vscode.window.terminals.find((t) => t.name === name);
+  const created = !terminal;
   if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: fs.existsSync(e.dir) ? e.dir : undefined });
   terminal.show();
+  if (created) moveTerminalTabToEnd();
   if (e.tmuxName) {
     terminal.sendText(`tmux -L ${agentSocket()} attach -t ${e.tmuxName}`);
   } else {
@@ -2810,6 +2839,7 @@ function activate(context) {
     if (!fav) return;
     const t = vscode.window.createTerminal({ name: fav.label || path.basename(fav.path), cwd: fav.path });
     t.show();
+    moveTerminalTabToEnd();
   });
   reg('claudeHelper.openFolder', (fav) => {
     if (!fav) return;
