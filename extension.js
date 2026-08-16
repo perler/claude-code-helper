@@ -1465,6 +1465,38 @@ async function startClaudeFromUri(uri) {
   await startClaude(fav);
 }
 
+// Create a subfolder inside the right-clicked folder and start Claude in it
+// straight away — the two-step "New Folder…" + "Start Claude Here" in one go.
+async function newFolderAndStartClaudeFromUri(uri) {
+  let base = uri && uri.fsPath;
+  if (base) {
+    try { if (!fs.statSync(base).isDirectory()) base = path.dirname(base); } catch { base = null; }
+  }
+  if (!base) base = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!base) { vscode.window.showWarningMessage('Claude Code Helper: no folder selected.'); return; }
+  const name = await vscode.window.showInputBox({
+    title: 'New Folder & Start Claude',
+    prompt: `Folder to create in ${shortHome(base)}`,
+    placeHolder: 'e.g. billing-bug (nested paths allowed)',
+    validateInput: (v) => {
+      const t = (v || '').trim();
+      if (!t) return 'Enter a folder name.';
+      if (path.isAbsolute(t) || t.split(/[\\/]/).includes('..')) return 'Use a relative name without "..".';
+      if (fs.existsSync(path.join(base, t))) return 'That already exists.';
+      return null;
+    },
+  });
+  if (name === undefined) return;
+  const dir = path.join(base, name.trim());
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    vscode.window.showErrorMessage(`Claude Code Helper: could not create ${dir} — ${e.message}`);
+    return;
+  }
+  await startClaude({ path: dir, label: path.basename(dir) });
+}
+
 async function resumeClaudeFromUri(uri) {
   const fav = favFromUri(uri);
   if (!fav) { vscode.window.showWarningMessage('Claude Code Helper: no folder selected.'); return; }
@@ -2772,6 +2804,7 @@ function activate(context) {
   reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
   reg('claudeHelper.startClaudeFromExplorer', (uri) => startClaudeFromUri(uri));
+  reg('claudeHelper.newFolderAndStartClaudeFromExplorer', (uri) => newFolderAndStartClaudeFromUri(uri));
   reg('claudeHelper.resumeClaudeFromExplorer', (uri) => resumeClaudeFromUri(uri));
   reg('claudeHelper.openTerminalHere', (fav) => {
     if (!fav) return;
