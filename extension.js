@@ -1442,7 +1442,9 @@ async function askClaudeSession(question, io) {
 
   const create = !existing && target.create;
   const dir = existing || (create ? uniqueDir(targetDir(target, slug)) : target.dir);
-  if (create) {
+  // `create` invents a slug subfolder inside a home for many sessions; `ensure` is
+  // the picker's typed path, which is already the exact folder and only has to exist.
+  if (create || (!existing && target.ensure && !fs.existsSync(dir))) {
     try {
       fs.mkdirSync(dir, { recursive: true });
     } catch (e) {
@@ -1467,17 +1469,100 @@ async function askClaudeSession(question, io) {
   }
 }
 
-// The override behind Shift+Tab: the full routing table, filterable, scratch first.
+// Everywhere a session can go as a plain folder: first-level ~/projects, and first-
+// AND second-level ~/clients. The Asana table only names places that have a project,
+// so a client's one-off subfolder (~/clients/BF/router-swap) is reachable no other
+// way. These run the session IN the folder — no slug subfolder is invented, because
+// picking an exact folder is the point.
+function listFolderTargets() {
+  const out = [];
+  const proj = projectsRoot();
+  for (const name of dirsIn(proj)) {
+    out.push({ id: `repo:${name}`, name, dir: path.join(proj, name), create: false, desc: 'local dev project', group: 'Projects' });
+  }
+  const root = clientsRoot();
+  for (const code of dirsIn(root)) {
+    const dir = path.join(root, code);
+    const desc = clientName(dir) || `client ${code.replace(/^#/, '')}`;
+    out.push({ id: `dir:${dir}`, name: code, dir, create: false, desc, group: 'Client folders' });
+    for (const sub of dirsIn(dir)) {
+      const sd = path.join(dir, sub);
+      out.push({ id: `dir:${sd}`, name: `${code} / ${sub}`, dir: sd, create: false, desc, group: 'Client folders' });
+    }
+  }
+  return out;
+}
+
+// What a typed path means. It is read against the same roots the list is built from,
+// so "BF/router-swap" and "claude-code-helper/spike" both land where you would guess;
+// a first segment that matches no client and no project falls through to scratch,
+// which is also where a bare word ends up. Returns null for nonsense (a '..' escape).
+function resolveTypedDir(text) {
+  const raw = String(text || '').trim().replace(/[\\/]+$/, '');
+  if (!raw) return null;
+  if (raw.startsWith('~/') || path.isAbsolute(raw)) return expandHome(raw);
+  const parts = raw.split(/[\\/]+/).filter(Boolean);
+  if (!parts.length || parts.some((p) => p === '..')) return null;
+  const [head, ...rest] = parts;
+  const tail = rest.join(path.sep);
+  if (head === 'clients') return rest.length ? path.join(clientsRoot(), tail) : null;
+  if (head === 'projects') return rest.length ? path.join(projectsRoot(), tail) : null;
+  const c = clientDir(head, null, rest[0]);
+  if (c) return tail ? path.join(c, tail) : c;
+  const p = path.join(projectsRoot(), head);
+  if (fs.existsSync(p)) return tail ? path.join(p, tail) : p;
+  return path.join(expandHome(cfg().get('scratchDir') || '~/tasks'), parts.join(path.sep));
+}
+
+// The override behind Shift+Tab: scratch, then the Asana routing table, then every
+// project and client folder — and, live as you type, an offer to create whatever
+// path you are typing if it does not exist yet.
 async function pickTarget(slug) {
   const scratch = scratchTarget(slug);
-  const items = [scratch, ...listTargets()].map((t) => ({
+  const asana = listTargets().filter((t) => String(t.id).startsWith('asana:'));
+  const taken = new Set(asana.map((t) => t.dir).filter(Boolean));
+  const folders = listFolderTargets().filter((t) => !taken.has(t.dir));
+  const toItem = (t) => ({
     label: `$(folder) ${t.name}`,
     description: shortHome(targetDir(t, slug)),
     detail: t.desc,
     target: t,
-  }));
-  const pick = await vscode.window.showQuickPick(items, { placeHolder: 'Where does this belong?', matchOnDetail: true });
-  return pick ? pick.target : null;
+  });
+  const sep = (label) => ({ label, kind: vscode.QuickPickItemKind.Separator });
+  const items = [toItem(scratch)];
+  if (asana.length) items.push(sep('Asana projects'), ...asana.map(toItem));
+  for (const group of ['Projects', 'Client folders']) {
+    const inGroup = folders.filter((t) => t.group === group);
+    if (inGroup.length) items.push(sep(group), ...inGroup.map(toItem));
+  }
+
+  const qp = vscode.window.createQuickPick();
+  qp.placeholder = 'Where does this belong? — or type a new path (BF/router-swap) to create it';
+  qp.matchOnDescription = true;
+  qp.matchOnDetail = true;
+  qp.items = items;
+  // Rebuilt only when the offer itself changes: reassigning items resets the
+  // highlighted row, which on every keystroke would fight the typing.
+  let offered = null;
+  const render = () => {
+    const dir = resolveTypedDir(qp.value);
+    const create = dir && !fs.existsSync(dir) ? dir : null;
+    if (create === offered) return;
+    offered = create;
+    qp.items = create ? [{
+      label: `$(new-folder) Create ${shortHome(create)}`,
+      detail: 'new folder — the session starts in it',
+      alwaysShow: true,
+      target: { id: `new:${create}`, name: path.basename(create), dir: create, create: false, ensure: true, desc: 'new folder' },
+    }, ...items] : items;
+  };
+  qp.onDidChangeValue(render);
+  return new Promise((resolve) => {
+    let picked;
+    qp.onDidAccept(() => { picked = qp.selectedItems[0]; qp.hide(); });
+    qp.onDidHide(() => { qp.dispose(); resolve(picked ? picked.target : null); });
+    qp.show();
+  });
 }
 
 function favFromUri(uri) {
