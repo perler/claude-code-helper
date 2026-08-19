@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -141,7 +141,8 @@
       },
       {
         "command": "claudeHelper.revealInExplorer",
-        "title": "Reveal in Explorer"
+        "title": "Reveal in Explorer",
+        "icon": "$(folder-opened)"
       },
       {
         "command": "claudeHelper.copyPath",
@@ -445,6 +446,11 @@
           "command": "claudeHelper.resumeClaude",
           "when": "view == claudeHelper.favourites && viewItem == favourite",
           "group": "inline@2"
+        },
+        {
+          "command": "claudeHelper.revealInExplorer",
+          "when": "view == claudeHelper.favourites && viewItem == favourite",
+          "group": "inline@3"
         },
         {
           "command": "claudeHelper.startClaude",
