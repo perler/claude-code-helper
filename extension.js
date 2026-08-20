@@ -2389,6 +2389,33 @@ function agentStatusGlyph(entry, live) {
   return AGENT_STATUS_GLYPH[agentStatus(entry)] || '🟢';
 }
 
+// Is there actually a master to attach to? asana-bridge2 deleted the dtach layer
+// on purpose (see its file header): a picked-up task runs as a headless
+// `claude -p` child of the bridge, so `claude agents --json` reports the session
+// live while ~/.claude/dtach holds no socket for it. Attaching regardless is what
+// this view used to do, and it could only ever answer
+// `dtach: …/<id>.sock: No such file or directory` (seen 2026-08-20 on the
+// ✨ SAX Kopierer task). Takeover for those is a RESUME into a dtach master of
+// our own — which is exactly what the bridge's header documents as human takeover.
+function agentAttachable(entry) {
+  if (!entry) return false;
+  if (entry.tmuxName) return tmuxAlive(entry.tmuxName);
+  return !!(entry.sessionId && sessionDtachSocket(entry.sessionId));
+}
+
+// The bridge's run lock — the pid of its headless run while one is in flight.
+// Resuming underneath it puts two claude processes on one transcript: the CLI's
+// own conflict guard does not fire, because a `claude -p` run registers itself as
+// `kind: "interactive"` (asana-bridge2.js, "Run lock"). Null when no run is alive.
+function bridgeRunInFlight(dir) {
+  let lock;
+  try { lock = JSON.parse(fs.readFileSync(path.join(dir, '.bridge-run.lock'), 'utf8')); }
+  catch { return null; }
+  if (!lock || !lock.pid) return null;
+  try { process.kill(lock.pid, 0); } catch { return null; }
+  return lock;
+}
+
 // Bridge sessions the index does not know about.
 //
 // asana-bridge2 deliberately keeps no hand-maintained index — its whole point
@@ -2499,9 +2526,13 @@ function buildAgentTooltip(entry, live, meta) {
   const metaLines = [];
   metaLines.push(`📁 \`${entry.dir}\``);
   if (entry.permalink) metaLines.push(`🔗 ${entry.permalink}`);
-  metaLines.push(entry.tmuxName
-    ? `🖥️ \`tmux -L ${agentSocket()} attach -t ${entry.tmuxName}\``
-    : `🖥️ \`dtach -a ${path.join(dtachSocketDir(), entry.sessionId + '.sock')} -E -z -r winch\``);
+  if (entry.tmuxName) {
+    metaLines.push(`🖥️ \`tmux -L ${agentSocket()} attach -t ${entry.tmuxName}\``);
+  } else if (agentAttachable(entry)) {
+    metaLines.push(`🖥️ \`dtach -a ${path.join(dtachSocketDir(), entry.sessionId + '.sock')} -E -z -r winch\``);
+  } else if (live) {
+    metaLines.push('🖥️ headless bridge run — nothing to attach to; opening it resumes the transcript in a terminal of ours');
+  }
   metaLines.push(`🆔 \`${entry.sessionId}\``);
   const st = live ? agentStatus(entry) : null;
   const a = live && claudeAgentsMap() ? claudeAgentsMap().get(entry.sessionId) : null;
@@ -2591,13 +2622,36 @@ class AgentSessionsProvider {
   }
 }
 
-function attachAgentSession(node) {
+async function attachAgentSession(node) {
   if (!node || !node.entry) return;
   const e = node.entry;
   // Re-checked at click time, not taken from render time: the session may have
   // ended in the meantime, in which case resuming from the transcript is correct.
   if (!agentLive(e)) {
     vscode.window.showWarningMessage(`Agent session "${e.displayName}" is no longer running — resuming instead.`);
+    return resumeAgentSession(node);
+  }
+  // Live, but with no master behind it: a bridge-v2 headless run. Resume it into
+  // a dtach master of ours instead of emitting an attach to a socket that was
+  // never created — but say so first when the bridge is still mid-run, because
+  // the takeover then means two claude processes appending to one transcript.
+  if (!agentAttachable(e)) {
+    const lock = bridgeRunInFlight(e.dir);
+    if (lock) {
+      const started = Date.parse(lock.startedAt);
+      const since = Number.isFinite(started) ? relativeTime(started) : 'a while ago';
+      const TAKE = 'Take Over Anyway';
+      const answer = await vscode.window.showWarningMessage(
+        `“${e.displayName}” is a headless bridge run — there is no terminal session to attach to.`,
+        {
+          modal: true,
+          detail: `The Asana bridge started it ${since} (pid ${lock.pid}) and it is still working. `
+            + 'Taking over now starts a second Claude on the same transcript. '
+            + 'The normal move is to wait for its Asana comment and take over once it has stopped.',
+        },
+        TAKE);
+      if (answer !== TAKE) return;
+    }
     return resumeAgentSession(node);
   }
   const name = `▶ ${e.displayName}`;
