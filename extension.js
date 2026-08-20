@@ -1050,6 +1050,75 @@ function refreshAsanaProjects(maxAgeHours) {
   } catch {}
 }
 
+// ── the task we already have ─────────────────────────────────────────────────
+//
+// Half of what gets pasted into the box is the name of a task that already exists —
+// an alert-spawned Asana task, a title copied out of the app. That name answers the
+// routing question outright: the project it sits in IS the destination, and no amount
+// of shortcode-and-company-name matching can beat it. "✨ 🔴 MP startpage publisher
+// (moneyprofiler.de)" routed to nothing, because nothing in the table says SFF owns
+// moneyprofiler.de — while five tasks by that exact name sat in SFF EDV.
+//
+// It also catches the duplicate: those five exist because every run created a task
+// instead of commenting on the open one.
+
+// The box is usually typed "asana <subject>" / "email <subject>". The verb is the box's
+// grammar, not part of the task's name.
+function asanaTaskQuery(q) {
+  return String(q || '').trim().replace(/^(asana|email)\s+/i, '').trim();
+}
+
+function sameTaskName(a, b) {
+  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return norm(a) === norm(b) && norm(a).length > 0;
+}
+
+// Only an EXACT name match counts. `asana find` is a fuzzy search — it answers a
+// three-word query with twenty loosely-related tasks — so anything less than verbatim
+// would be the guessing the model already does, at the cost of a network call.
+function matchAsanaTask(query, list, targets) {
+  const resolved = [];
+  for (const t of list) {
+    if (!sameTaskName(t && t.name, query) || !Array.isArray(t.projects)) continue;
+    const target = targets.find((x) => x.gid && t.projects.some((p) => p && p.gid === x.gid));
+    if (target) resolved.push({ task: t, target });
+  }
+  if (!resolved.length) return null;
+  // The same name under two different clients is not evidence of anything. Giving up
+  // hands the decision back to the model, which is where it started.
+  if (resolved.some((r) => r.target !== resolved[0].target)) return null;
+  // A completed task means the subject came round again and wants a new one filed in
+  // the same project — only an open task is something to comment on.
+  const open = resolved.find((r) => !r.task.completed);
+  return { target: resolved[0].target, task: open ? open.task : null };
+}
+
+// Runs alongside the routing call, not after it: ~0.9s, which is inside what the model
+// spends anyway. Any failure resolves to null and the model's answer stands.
+function findAsanaTask(question, targets) {
+  return new Promise((resolve) => {
+    const cmd = asanaCommand();
+    const query = asanaTaskQuery(question);
+    // A handful of characters would match half the workspace under a fuzzy search, and
+    // an exact hit on them would be a coincidence rather than a reference.
+    if (!cmd || query.length < 8) return resolve(null);
+    const tokens = cmd.split(/\s+/);
+    let child;
+    try {
+      child = cp.execFile(
+        tokens[0], [...tokens.slice(1), 'find', query, '--limit', '20', '--json'],
+        { timeout: 15000, maxBuffer: 1 << 22 },
+        (err, stdout) => {
+          if (err) return resolve(null);
+          let list; try { list = JSON.parse(String(stdout || '')); } catch { return resolve(null); }
+          resolve(Array.isArray(list) ? matchAsanaTask(query, list, targets) : null);
+        }
+      );
+    } catch { return resolve(null); }
+    child.on('error', () => resolve(null));
+  });
+}
+
 // ── the routing table ────────────────────────────────────────────────────────
 
 function clientsRoot() { return expandHome(cfg().get('clientsDir') || '~/clients'); }
@@ -1078,9 +1147,15 @@ function clientDir(code, folders, sub) {
   return candidates[0] || null;
 }
 
+// `client_name` is what the IT Portal sync writes, but a hand-made agent.json spells it
+// `name`, and one or two carry only `business`. Reading the one key left 12 of 68 clients
+// described to the router as "client SFF" — a tautology in the one field that exists to
+// make an opaque shortcode matchable.
 function clientName(dir) {
-  try { return JSON.parse(fs.readFileSync(path.join(dir, '.agent', 'agent.json'), 'utf8')).client_name || ''; }
-  catch { return ''; }
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, '.agent', 'agent.json'), 'utf8'));
+    return j.client_name || j.name || j.business || '';
+  } catch { return ''; }
 }
 
 // The Asana projects that aren't a client's own, and where their work lives.
@@ -1272,7 +1347,14 @@ async function generateSessionPlan(question) {
   const routeSystem = 'You route a short work note to one destination from a fixed list. '
     + 'You reply with exactly one JSON object and nothing else. Ids are copied character-for-character '
     + 'from the list you were given; you never invent one, and you answer "none" rather than guess.';
-  const plan = parseSessionPlan(await askModel(routingPrompt(question, targets), routeSystem), targets);
+  const [routed, hit] = await Promise.all([
+    askModel(routingPrompt(question, targets), routeSystem),
+    findAsanaTask(question, targets),
+  ]);
+  const plan = parseSessionPlan(routed, targets);
+  // An entry that names a task we hold is not a classification problem — the project
+  // it is filed in is the answer, so it outranks whatever the model decided.
+  if (hit) { plan.target = hit.target; plan.task = hit.task; }
   plan.slug = plan.slug || timestampName();
   plan.existing = await findExistingFolder(question, plan);
   return plan;
@@ -1373,7 +1455,7 @@ async function findExistingFolder(question, plan) {
 // misremembers a shortcode must degrade to the scratch folder, never write into some
 // other client's directory.
 function parseSessionPlan(stdout, targets) {
-  const out = { slug: '', kind: 'session', target: null };
+  const out = { slug: '', kind: 'session', target: null, task: null };
   const m = String(stdout || '').match(/\{[\s\S]*\}/);
   if (!m) return out;
   let obj; try { obj = JSON.parse(m[0]); } catch { return out; }
@@ -1407,8 +1489,18 @@ const KIND_LABEL = { asana: 'Asana task', email: 'Email', session: 'Session' };
 // Turn the raw entry into the session's first prompt. A "session" entry is passed
 // through untouched — it already says what it wants. The other two are the typing the
 // box exists to save: the verb and the destination are stated here instead.
-function decoratePrompt(q, kind, target) {
+function decoratePrompt(q, kind, target, task) {
   if (kind === 'asana') {
+    // The search the cold instruction below asks for has already been done, by name and
+    // exactly: this IS that task. Saying so is what stops the sixth copy of it.
+    if (task) {
+      return [
+        `Comment on the existing Asana task "${task.name}" (${task.gid}) — do NOT create a second one.`,
+        ...(task.permalink_url ? [task.permalink_url] : []),
+        'Follow the comment conventions in CLAUDE.md and refresh the Status line with `asana status`.',
+        '', 'Note:', q,
+      ].join('\n');
+    }
     const where = target && target.gid ? `Asana project "${target.name}" (${target.gid})` : 'the right Asana project';
     return [
       `Create an Asana task in ${where}, following the conventions in CLAUDE.md.`,
@@ -1458,12 +1550,13 @@ async function askClaudeSession(question, io) {
   let kind = plan.kind;
   let target = plan.target || scratchTarget(slug);
   let existing = plan.existing;
+  let task = plan.task || null;
 
   for (;;) {
     const reply = await io.propose({
       kind,
       kindLabel: KIND_LABEL[kind],
-      target: target.name,
+      target: task ? `${target.name} — existing task` : target.name,
       dir: shortHome(existing || targetDir(target, slug)),
       existing: !!existing,
     });
@@ -1474,7 +1567,11 @@ async function askClaudeSession(question, io) {
     if (reply.type !== 'pickTarget') break;
     // Reaching for the picker is how you say "not that folder", so a proposed
     // continuation is dropped: pick the same target again and you get a fresh one.
+    // The task found by name belongs to the target that was just rejected, so it goes
+    // with it — commenting on it from another client's folder would be worse than not
+    // having found it.
     existing = null;
+    task = null;
     const picked = await pickTarget(slug);
     if (picked) target = picked;
   }
@@ -1501,7 +1598,7 @@ async function askClaudeSession(question, io) {
   try {
     started = !!(await launchClaude(
       { path: dir, label: path.basename(dir) }, resume,
-      { skipNamePrompt: true, initialPrompt: resume ? q : decoratePrompt(q, kind, target) }
+      { skipNamePrompt: true, initialPrompt: resume ? q : decoratePrompt(q, kind, target, task) }
     ));
   } finally {
     state('idle', !started);
