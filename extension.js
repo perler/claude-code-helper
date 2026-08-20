@@ -1083,7 +1083,7 @@ function clientName(dir) {
   catch { return ''; }
 }
 
-// The Asana projects that aren't a client's "<CODE> EDV", and where their work lives.
+// The Asana projects that aren't a client's own, and where their work lives.
 const HOUSE_PROJECTS = [
   { re: /^EEB EDV$/i, code: 'EEB', desc: 'our own business admin' },
   { re: /Hosting$/, code: 'EEB', sub: 'hosting', desc: 'our servers and hosting' },
@@ -1091,35 +1091,73 @@ const HOUSE_PROJECTS = [
   { re: /AI Sandbox$/i, scratch: true, desc: 'throwaway tests of the Asana tooling' },
 ];
 
-// One flat list of everywhere an entry can go. Only the primary "<CODE> EDV" project
-// per client is offered, plus the house ones: sub-projects and retired "… old" ones
-// read as perfectly plausible to a small model and would file work somewhere dead.
+// The Asana project a client's work is filed in. Most are "<CODE> EDV", but plenty are
+// not — SFC's only project is "SFC Websites", PCS's is a bare "PCS" — so a client is
+// never keyed on that spelling; this only decides which project the task GETS FILED IN
+// once the client is already known.
+//
+// Several projects can share a shortcode, so the primary one is preferred and a genuine
+// tie gives up: "IR misc" and "IR magento" are both plausible and picking either is a
+// guess that files work in the wrong place. Returning null is safe — the client is still
+// a destination, and decoratePrompt then asks the session to choose the project.
+function clientProject(code, projects) {
+  const want = code.toUpperCase();
+  // "WD - EDV" is the one irregular spelling; normalising it here keeps it a primary.
+  const norm = (n) => n.toUpperCase().replace(/\s+-\s+/, ' ').trim();
+  const cand = projects.filter((p) => !/\bold\b/i.test(p.name)
+    && !HOUSE_PROJECTS.some((h) => h.re.test(p.name))
+    && p.name.split(/\s+/)[0].toUpperCase() === want);
+  return cand.find((p) => norm(p.name) === `${want} EDV`)
+    || cand.find((p) => norm(p.name) === want)
+    || (cand.length === 1 ? cand[0] : null);
+}
+
+// One flat list of everywhere an entry can go: every client, the house projects, and
+// every local repo.
+//
+// Clients come from the ~/clients folders, NOT from the Asana project list. Keying them
+// on a project named "<CODE> EDV" left 31 of 68 clients — SFC, PCS, PM, VS, IR, NANO …
+// — with no destination at all, so the router could only answer "none" and their work
+// landed in the scratch folder however clearly the entry named them. The folder is what
+// a session actually needs, and it exists whether or not the project is spelled that way.
 function listTargets() {
   const folders = dirsIn(clientsRoot());
+  const projects = loadAsanaProjects();
   const out = [];
-  for (const p of loadAsanaProjects()) {
-    if (/\bold\b/i.test(p.name)) continue;
+  for (const p of projects) {
     const house = HOUSE_PROJECTS.find((h) => h.re.test(p.name));
-    let dir = null, create = true, desc = '';
-    if (house) {
-      desc = house.desc;
-      if (house.repo) { dir = path.join(projectsRoot(), house.repo); create = false; }
-      else if (!house.scratch) {
-        const c = clientDir(house.code, folders, house.sub);
-        if (!c) continue;
-        dir = house.sub ? path.join(c, house.sub) : c;
-      }
-    } else {
-      // "BF EDV", plus the one irregular "WD - EDV".
-      const m = p.name.match(/^([A-Z0-9]+)\s+(?:-\s+)?EDV$/);
-      if (!m) continue;
-      dir = clientDir(m[1], folders);
-      if (!dir) continue;
+    if (!house || /\bold\b/i.test(p.name)) continue;
+    let dir = null, create = true;
+    if (house.repo) { dir = path.join(projectsRoot(), house.repo); create = false; }
+    else if (!house.scratch) {
+      const c = clientDir(house.code, folders, house.sub);
+      if (!c) continue;
+      dir = house.sub ? path.join(c, house.sub) : c;
+    }
+    out.push({ id: `asana:${p.gid}`, name: p.name, gid: p.gid, dir, create, desc: house.desc });
+  }
+  // A '#' prefix is a quick-find marker, not part of the code, so both spellings of a
+  // client collapse onto the one directory clientDir() resolves.
+  const houseCodes = new Set(HOUSE_PROJECTS.map((h) => h.code).filter(Boolean));
+  for (const code of [...new Set(folders.map((f) => f.replace(/^#/, '')))].sort()) {
+    if (houseCodes.has(code)) continue;   // EEB is already in as its house projects
+    const dir = clientDir(code, folders);
+    if (!dir || out.some((t) => t.dir === dir)) continue;
+    const p = clientProject(code, projects);
+    out.push({
+      id: `client:${code}`,
+      // The project name when there is one: it is what the model reads as the
+      // destination, and what decoratePrompt quotes back to the session.
+      name: p ? p.name : code,
+      gid: p ? p.gid : '',
+      dir,
+      // A client folder is a home for many sessions, so each entry gets its own slug
+      // subfolder under it — never the client root itself.
+      create: true,
       // Shortcodes are opaque (BB, RAHR, 2W), so the company name goes to the model
       // too — matching on "BERGMANN" is far safer than on "BB".
-      desc = clientName(dir) || `client ${m[1]}`;
-    }
-    out.push({ id: `asana:${p.gid}`, name: p.name, gid: p.gid, dir, create, desc });
+      desc: clientName(dir) || `client ${code}`,
+    });
   }
   const taken = new Set(out.map((t) => t.dir).filter(Boolean));
   for (const name of dirsIn(projectsRoot())) {
@@ -1242,17 +1280,17 @@ async function generateSessionPlan(question) {
 
 function routingPrompt(question, targets) {
   {
-    // Asana projects get a line each — the client name is what makes an opaque
-    // shortcode matchable. Repos are just names, on one line: spelling out "local dev
-    // project" 58 times cost more latency than it ever bought in accuracy.
-    const asana = targets.filter((t) => t.id.startsWith('asana:'));
+    // Clients get a line each — the company name is what makes an opaque shortcode
+    // matchable. Repos are just names, on one line: spelling out "local dev project"
+    // 58 times cost more latency than it ever bought in accuracy.
+    const homes = targets.filter((t) => !t.id.startsWith('repo:'));
     const repos = targets.filter((t) => t.id.startsWith('repo:'));
     const prompt = [
       'Route one entry from a "New Task" box.',
       '',
       'Entry:', question, '',
-      'Asana projects — "<id> — <project> — <client or subject>":',
-      ...asana.map((t) => `${t.id} — ${t.name} — ${t.desc}`),
+      'Clients and house projects — "<id> — <Asana project> — <client or subject>":',
+      ...homes.map((t) => `${t.id} — ${t.name} — ${t.desc}`),
       '',
       'Local dev repos, id is "repo:<name>":',
       repos.map((t) => t.name).join(', '),
@@ -1267,10 +1305,11 @@ function routingPrompt(question, targets) {
       '  or names a recipient ("an Herrn Wagner", "reply to ...", an address).',
       '- kind "session": actual work to do right now — a question, a bug, a change to make.',
       '- target must be an id from the lists above, copied verbatim, or "none".',
-      '- An "asana" or "email" entry belongs to the asana: target whose client or subject it',
-      '  is about — that is the Asana project it will be filed in.',
+      '- An "asana" or "email" entry belongs to the client or house target whose client or',
+      '  subject it is about — that decides the Asana project it will be filed in.',
       '- A "session" entry belongs to a repo: target when it names one, otherwise to the',
-      '  asana: target for the client it is about.',
+      '  client: target for the client it is about. A client is a valid destination even',
+      '  when its own shortcode is all the entry says about it.',
       '- Shortcodes that merely look alike (RAH vs RAHR, PR vs PRX) are unrelated clients.',
       '  Never guess from a resemblance — prefer "none".',
       '- slug: exactly two lowercase words joined by a hyphen, summarising the entry.',
@@ -1514,13 +1553,13 @@ function resolveTypedDir(text) {
   return path.join(expandHome(cfg().get('scratchDir') || '~/tasks'), parts.join(path.sep));
 }
 
-// The override behind Shift+Tab: scratch, then the Asana routing table, then every
-// project and client folder — and, live as you type, an offer to create whatever
+// The override behind Shift+Tab: scratch, then the client/house routing table, then every
+// project and client subfolder — and, live as you type, an offer to create whatever
 // path you are typing if it does not exist yet.
 async function pickTarget(slug) {
   const scratch = scratchTarget(slug);
-  const asana = listTargets().filter((t) => String(t.id).startsWith('asana:'));
-  const taken = new Set(asana.map((t) => t.dir).filter(Boolean));
+  const homes = listTargets().filter((t) => !String(t.id).startsWith('repo:'));
+  const taken = new Set(homes.map((t) => t.dir).filter(Boolean));
   const folders = listFolderTargets().filter((t) => !taken.has(t.dir));
   const toItem = (t) => ({
     label: `$(folder) ${t.name}`,
@@ -1530,7 +1569,7 @@ async function pickTarget(slug) {
   });
   const sep = (label) => ({ label, kind: vscode.QuickPickItemKind.Separator });
   const items = [toItem(scratch)];
-  if (asana.length) items.push(sep('Asana projects'), ...asana.map(toItem));
+  if (homes.length) items.push(sep('Clients & house projects'), ...homes.map(toItem));
   for (const group of ['Projects', 'Client folders']) {
     const inGroup = folders.filter((t) => t.group === group);
     if (inGroup.length) items.push(sep(group), ...inGroup.map(toItem));
