@@ -1068,19 +1068,57 @@ function asanaTaskQuery(q) {
   return String(q || '').trim().replace(/^(asana|email)\s+/i, '').trim();
 }
 
+// The other thing typed in front of a pasted task name is the client: "rah 4. Final Local
+// Folders copy". That word is addressing, not part of the name, and leaving it in breaks
+// the exact match that the whole lookup rests on — the entry then reaches the model as a
+// bare string and gets matched on wordplay. Only a token that IS one of our shortcodes is
+// dropped, and the original spelling stays a candidate, so a task genuinely named after a
+// client still matches.
+function asanaTaskNames(question, targets) {
+  const base = asanaTaskQuery(question);
+  const names = [base];
+  const codes = new Set(HOUSE_PROJECTS.map((h) => h.code).filter(Boolean).map((c) => c.toUpperCase()));
+  for (const t of targets) {
+    const m = /^client:(.+)$/i.exec(t.id || '');
+    if (m) codes.add(m[1].toUpperCase());
+  }
+  const lead = /^([A-Za-z0-9#]{2,6})\s+(\S.*)$/.exec(base);
+  if (lead && codes.has(lead[1].replace(/^#/, '').toUpperCase())) names.push(lead[2].trim());
+  // The search runs on the narrowest spelling: the shortcode is a word Asana has to match
+  // somewhere, and the task's own name is the text most likely to come back verbatim.
+  return { query: names[names.length - 1], names };
+}
+
+// A subtask carries no projects of its own — Asana files the parent and hangs the subtask
+// off it — so read literally, every subtask belongs nowhere and was invisible here. Its
+// home is the parent's project, which the search now returns in the same call.
+function taskProjects(t) {
+  if (t && Array.isArray(t.projects) && t.projects.length) return t.projects;
+  const p = t && t.parent;
+  return (p && Array.isArray(p.projects)) ? p.projects : [];
+}
+
+// House task names are prefixed "✨ " and often a severity dot, and a name pasted out of
+// the app carries them while a name typed from memory does not. That decoration is ours,
+// not part of what the task is called, so it is stripped from both sides.
 function sameTaskName(a, b) {
-  const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const norm = (s) => String(s || '')
+    .replace(/^[\s✨🔴🟠🟡🟢⚠️️]+/u, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
   return norm(a) === norm(b) && norm(a).length > 0;
 }
 
 // Only an EXACT name match counts. `asana find` is a fuzzy search — it answers a
 // three-word query with twenty loosely-related tasks — so anything less than verbatim
 // would be the guessing the model already does, at the cost of a network call.
-function matchAsanaTask(query, list, targets) {
+function matchAsanaTask(names, list, targets) {
   const resolved = [];
   for (const t of list) {
-    if (!sameTaskName(t && t.name, query) || !Array.isArray(t.projects)) continue;
-    const target = targets.find((x) => x.gid && t.projects.some((p) => p && p.gid === x.gid));
+    if (!names.some((n) => sameTaskName(t && t.name, n))) continue;
+    const projects = taskProjects(t);
+    const target = targets.find((x) => x.gid && projects.some((p) => p && p.gid === x.gid));
     if (target) resolved.push({ task: t, target });
   }
   if (!resolved.length) return null;
@@ -1098,7 +1136,7 @@ function matchAsanaTask(query, list, targets) {
 function findAsanaTask(question, targets) {
   return new Promise((resolve) => {
     const cmd = asanaCommand();
-    const query = asanaTaskQuery(question);
+    const { query, names } = asanaTaskNames(question, targets);
     // A handful of characters would match half the workspace under a fuzzy search, and
     // an exact hit on them would be a coincidence rather than a reference.
     if (!cmd || query.length < 8) return resolve(null);
@@ -1111,7 +1149,7 @@ function findAsanaTask(question, targets) {
         (err, stdout) => {
           if (err) return resolve(null);
           let list; try { list = JSON.parse(String(stdout || '')); } catch { return resolve(null); }
-          resolve(Array.isArray(list) ? matchAsanaTask(query, list, targets) : null);
+          resolve(Array.isArray(list) ? matchAsanaTask(names, list, targets) : null);
         }
       );
     } catch { return resolve(null); }
@@ -1400,10 +1438,61 @@ function routingPrompt(question, targets) {
   }
 }
 
+// The head of a file, not the file: a HANDOFF.md runs to tens of kilobytes and there are
+// up to 60 folders to look at. Everything read here — the title line, the gid on line 5 —
+// is in the first few hundred bytes.
+function fileHead(file) {
+  let fd;
+  try {
+    fd = fs.openSync(file, 'r');
+    const buf = Buffer.alloc(4096);
+    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    return buf.slice(0, n).toString('utf8');
+  } catch { return ''; }
+  finally { try { if (fd !== undefined) fs.closeSync(fd); } catch {} }
+}
+
+// What the folder is ABOUT, in the words the work itself used. Folder names are two-word
+// slugs, and matching an entry against a bare slug is matching wordplay: "rah 4. Final
+// Local Folders copy" was read as a continuation of "rah-destination-side" — a backup
+// freshness check — because "copy" and "destination" sit near each other and nothing in
+// the prompt said what that folder held.
+function folderSubject(dir) {
+  for (const f of ['TASK.md', 'HANDOFF.md', 'README.md']) {
+    const line = (fileHead(path.join(dir, f)).split('\n').find((l) => l.trim()) || '').trim();
+    if (!line) continue;
+    return line
+      .replace(/^#+\s*/, '')
+      .replace(/^HANDOFF\s*[—–-]\s*/i, '')
+      .replace(/^[\s✨🔴🟠🟡🟢⚠️]+/u, '')
+      .trim()
+      .slice(0, 90);
+  }
+  return '';
+}
+
+// The Asana task a folder belongs to, when it belongs to one: the bridge writes the gid
+// into its marker file, and a task directory carries it in TASK.md. This is evidence, not
+// a resemblance — the folder for a task is the one that says so.
+function folderTaskGid(dir) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, '.asana-claude.json'), 'utf8'));
+    if (j && j.taskGid) return String(j.taskGid);
+  } catch {}
+  const m = fileHead(path.join(dir, 'TASK.md')).match(/Task GID:\**\s*`?(\d{6,})/i);
+  return m ? m[1] : '';
+}
+
 // Coming back to a task or a mail should land in the folder it already has, not beside
 // it. Past entries left their slug as a folder name under the same target, so this is a
 // name-matching question — one more ~1s call on top of the routing. Only targets that
 // hold one folder per piece of work are searched; a repo target IS the working directory.
+//
+// Two things are NOT a judgement call here. A folder that already carries an Asana gid is
+// the home of that one task: it is reachable by naming that task and no other way, because
+// a session resumed there inherits the bridge's ASANA_TASK_GID and posts its comments onto
+// whatever task the folder belongs to. And when the entry itself resolved to a task, the
+// gid decides — matching by gid or starting fresh, never asking the model to guess.
 async function findExistingFolder(question, plan) {
   const root = plan.target
     ? (plan.target.create ? plan.target.dir : null)
@@ -1411,31 +1500,50 @@ async function findExistingFolder(question, plan) {
   if (!root) return null;
   const folders = dirsIn(root)
     .map((name) => {
+      const dir = path.join(root, name);
       let mtime = 0;
-      try { mtime = fs.statSync(path.join(root, name)).mtimeMs; } catch {}
-      return { name, mtime };
+      try { mtime = fs.statSync(dir).mtimeMs; } catch {}
+      return { name, dir, mtime, gid: folderTaskGid(dir) };
     })
     .sort((a, b) => b.mtime - a.mtime)
     .slice(0, 60);
   if (!folders.length) return null;
+  // The entry named a task we hold, so there is nothing to weigh: its folder is the one
+  // stamped with its gid. No stamp means this task has no folder yet — a new one, not the
+  // nearest-looking neighbour.
+  const wanted = plan.task && plan.task.gid ? String(plan.task.gid) : '';
+  if (wanted) {
+    const hit = folders.find((f) => f.gid === wanted);
+    return hit ? hit.dir : null;
+  }
+  // A folder a task already owns is not a destination for an entry we could not tie to
+  // that task — a session resumed there inherits its gid. It stays in the list shown to
+  // the model, though: hiding the folder an entry genuinely belongs to only pushes the
+  // answer onto the next-nearest lookalike, and "the right folder, not reusable" has to
+  // come out as a fresh folder rather than as somebody else's.
+  //
   // The slug is generated from the entry, so the same subject twice often names the
   // same folder — worth checking for free before asking.
-  const exact = folders.find((f) => f.name === plan.slug);
-  if (exact) return path.join(root, exact.name);
+  const exact = folders.find((f) => !f.gid && f.name === plan.slug);
+  if (exact) return exact.dir;
   // Worked examples do the heavy lifting here: "same client, different subject" is the
   // mistake this call makes, and stating the rule abstractly was not enough to stop it.
   const system = [
-    'You match a short work note against a list of existing folder names.',
+    'You match a short work note against a list of existing folders.',
+    'Each line is a folder name, and where the work recorded one, " — " and its subject.',
     'You reply with exactly one line and nothing else: either a folder name copied',
     'character-for-character from the list, or the single word none.',
-    'You are strict. A folder is only a match when it names the SAME specific thing the',
+    'You are strict. A folder is only a match when it is about the SAME specific thing the',
     'note is about — the same machine, ticket, document, person or fault. Sharing a',
     'client, a technology or a general area is not a match. When in any doubt: none.',
   ].join(' ');
   const prompt = [
     'Work note:', question, '',
     'Existing folders:',
-    ...folders.map((f) => f.name),
+    ...folders.map((f) => {
+      const subject = folderSubject(f.dir);
+      return subject ? `${f.name} — ${subject}` : f.name;
+    }),
     '',
     'Examples of the judgement:',
     '- note "the VPN keeps dropping at DRM", folder "vpn-restart-problem" → vpn-restart-problem (same fault)',
@@ -1448,7 +1556,7 @@ async function findExistingFolder(question, plan) {
   const want = answer.trim().replace(/^[`'"]+|[`'".]+$/g, '').toLowerCase();
   if (!want || want === 'none') return null;
   const hit = folders.find((f) => f.name.toLowerCase() === want);
-  return hit ? path.join(root, hit.name) : null;
+  return hit && !hit.gid ? hit.dir : null;
 }
 
 // A target only counts if it matches one we actually offered — a model that invents or
@@ -1514,6 +1622,16 @@ function decoratePrompt(q, kind, target, task) {
     return [
       `Draft this email with the email-writing skill, then show it and wait for approval — nothing is sent unprompted.${about}`,
       '', 'Mail:', q,
+    ].join('\n');
+  }
+  // A "session" entry says what it wants and is passed through — but when the entry is
+  // the NAME of a task we hold, the session is working that task and should say so in the
+  // right place rather than opening a second one for the same thing.
+  if (task) {
+    return [
+      `This is Asana task "${task.name}" (${task.gid}) — work it there; do NOT create a second one.`,
+      ...(task.permalink_url ? [task.permalink_url] : []),
+      '', q,
     ].join('\n');
   }
   return q;
