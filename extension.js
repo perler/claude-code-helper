@@ -3233,7 +3233,24 @@ const FOLDER_ACTIONS = {
   },
   reveal: {
     icon: 'eye', label: 'Reveal in Explorer',
-    run: (p) => vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p)),
+    // revealInExplorer silently does nothing for a path outside every open root,
+    // and the search roots are deliberately wider than the workspace — so say so
+    // and offer the two ways in rather than swallowing the keypress.
+    run: async (p) => {
+      const uri = vscode.Uri.file(p);
+      if (!vscode.workspace.getWorkspaceFolder(uri)) {
+        const pick = await vscode.window.showWarningMessage(
+          `${shortHome(p)} is outside the open workspace.`,
+          'Add to Workspace', 'Open in New Window');
+        if (pick === 'Add to Workspace') {
+          vscode.workspace.updateWorkspaceFolders((vscode.workspace.workspaceFolders || []).length, null, { uri });
+        } else if (pick === 'Open in New Window') {
+          vscode.commands.executeCommand('vscode.openFolder', uri, { forceNewWindow: true });
+        }
+        return;
+      }
+      await vscode.commands.executeCommand('revealInExplorer', uri);
+    },
   },
   favourite: {
     icon: 'star-add', label: 'Add to Favourites',

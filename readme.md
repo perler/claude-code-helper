@@ -10,8 +10,10 @@ Replaces the standalone `claude-favourites` and `terminal-tree` extensions.
 **Go to Folder… (`Ctrl+Alt+P`)** — Quick Open indexes files only, so there is no built-in way to
 jump to a folder by name. This command scans `claudeHelper.folderSearchRoots` for directories and
 fuzzy-matches on the folder name. Enter runs the action set in `claudeHelper.folderSearchAction`
-(open the folder in a new window, by default); the other actions — terminal here, start Claude here,
-reveal in Explorer, add to favourites — sit as buttons on the highlighted row. Uses `fd` (or
+(reveal it in the Explorer of the current window, by default — if the folder is outside every open
+root you get the choice to add it to the workspace or open a new window); the other actions —
+open folder, terminal here, start Claude here, add to favourites — sit as buttons on the
+highlighted row. Uses `fd` (or
 `fdfind`) when installed and falls back to `find`.
 
 ## Settings
@@ -31,4 +33,4 @@ reveal in Explorer, add to favourites — sit as buttons on the highlighted row.
 | `claudeHelper.folderSearchRoots` | `~/clients ~/projects ~/hosting ~/tasks` | Roots scanned by Go to Folder… |
 | `claudeHelper.folderSearchDepth` | `3` | Levels below each root to descend |
 | `claudeHelper.folderSearchExcludes` | `node_modules .git venv .venv dist build __pycache__` | Directory names skipped |
-| `claudeHelper.folderSearchAction` | `openFolder` | What Enter does in Go to Folder… |
+| `claudeHelper.folderSearchAction` | `reveal` | What Enter does in Go to Folder… |

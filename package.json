@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -827,7 +827,7 @@
             "Reveal it in the Explorer",
             "Add it to Claude Favourites"
           ],
-          "default": "openFolder",
+          "default": "reveal",
           "description": "What Enter does in \"Go to Folder…\". The other actions stay available as buttons on the highlighted row."
         },
         "claudeHelper.confirmKillTerminal": {
