@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.27.0",
+  "version": "0.28.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -77,6 +77,12 @@
         "command": "claudeHelper.newSession",
         "title": "New Claude Session…",
         "icon": "$(rocket)",
+        "category": "Claude Code Helper"
+      },
+      {
+        "command": "claudeHelper.goToFolder",
+        "title": "Go to Folder…",
+        "icon": "$(search)",
         "category": "Claude Code Helper"
       },
       {
@@ -360,6 +366,11 @@
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "claudeHelper.goToFolder",
+          "when": "view == claudeHelper.favourites",
+          "group": "navigation@0"
+        },
         {
           "command": "claudeHelper.addFavourite",
           "when": "view == claudeHelper.favourites",
@@ -708,6 +719,11 @@
     },
     "keybindings": [
       {
+        "command": "claudeHelper.goToFolder",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p"
+      },
+      {
         "command": "claudeHelper.revealActiveTerminalCwd",
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t"
@@ -760,6 +776,59 @@
           "type": "boolean",
           "default": true,
           "description": "Ask for confirmation when removing a favourite."
+        },
+        "claudeHelper.folderSearchRoots": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "~/clients",
+            "~/projects",
+            "~/hosting",
+            "~/tasks"
+          ],
+          "description": "Roots scanned by \"Go to Folder…\" (Ctrl+Alt+P)."
+        },
+        "claudeHelper.folderSearchDepth": {
+          "type": "number",
+          "default": 3,
+          "description": "How many levels below each root \"Go to Folder…\" descends."
+        },
+        "claudeHelper.folderSearchExcludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "node_modules",
+            ".git",
+            "venv",
+            ".venv",
+            "dist",
+            "build",
+            "__pycache__"
+          ],
+          "description": "Directory names \"Go to Folder…\" skips (and never descends into)."
+        },
+        "claudeHelper.folderSearchAction": {
+          "type": "string",
+          "enum": [
+            "openFolder",
+            "terminal",
+            "startClaude",
+            "reveal",
+            "favourite"
+          ],
+          "enumDescriptions": [
+            "Open the folder in a new window",
+            "Open a terminal there",
+            "Start Claude there",
+            "Reveal it in the Explorer",
+            "Add it to Claude Favourites"
+          ],
+          "default": "openFolder",
+          "description": "What Enter does in \"Go to Folder…\". The other actions stay available as buttons on the highlighted row."
         },
         "claudeHelper.confirmKillTerminal": {
           "type": "boolean",

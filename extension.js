@@ -3144,6 +3144,145 @@ async function removeBookmark(bm) {
   bookmarksProvider.refresh();
 }
 
+// ─── go to folder ────────────────────────────────────────────────────────────
+//
+// Quick Open (Ctrl+P) indexes files only — VS Code has no way to jump to a
+// FOLDER by name. This is that picker: it scans a handful of roots for
+// directories and hands the pick to the same actions the favourites tree uses.
+
+function folderSearchRoots() {
+  const raw = cfg().get('folderSearchRoots');
+  const list = Array.isArray(raw) && raw.length ? raw : ['~/clients', '~/projects'];
+  return list.map(expandHome).filter((p) => {
+    try { return fs.statSync(p).isDirectory(); } catch { return false; }
+  });
+}
+
+// `fd` walks a deep tree far faster than `find`; Debian ships it as `fdfind`.
+let fdBinCache;
+function fdBinary() {
+  if (fdBinCache !== undefined) return fdBinCache;
+  fdBinCache = null;
+  for (const bin of ['fd', 'fdfind']) {
+    try {
+      cp.execFileSync(bin, ['--version'], { stdio: 'ignore' });
+      fdBinCache = bin;
+      break;
+    } catch { /* not installed */ }
+  }
+  return fdBinCache;
+}
+
+function scanDirs(root, depth, excludes) {
+  return new Promise((resolve) => {
+    const fd = fdBinary();
+    const [bin, args] = fd
+      ? [fd, ['--type', 'd', '--no-ignore', '--max-depth', String(depth),
+              ...excludes.flatMap((e) => ['--exclude', e]), '.', root]]
+      // find has no --exclude; prune the excluded names (and every dotdir) instead.
+      : ['find', [root, '-mindepth', '1', '-maxdepth', String(depth),
+                  '(', '-name', '.*', ...excludes.flatMap((e) => ['-o', '-name', e]), ')',
+                  '-prune', '-o', '-type', 'd', '-print']];
+    let out = '';
+    let child;
+    try {
+      child = cp.spawn(bin, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch { return resolve([]); }
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('error', () => resolve([]));
+    // fd exits 1 when nothing matched — take whatever came out either way.
+    child.on('close', () => resolve(out.split('\n').map((s) => s.replace(/\/$/, '')).filter(Boolean)));
+  });
+}
+
+async function listFolders() {
+  const roots = folderSearchRoots();
+  if (!roots.length) return [];
+  const depth = Math.max(1, Number(cfg().get('folderSearchDepth')) || 3);
+  const raw = cfg().get('folderSearchExcludes');
+  const excludes = Array.isArray(raw) ? raw : ['node_modules', '.git', 'venv', '.venv', 'dist', 'build'];
+  const lists = await Promise.all(roots.map((r) => scanDirs(r, depth, excludes)));
+  const seen = new Set();
+  const dirs = [];
+  for (const p of lists.flat()) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    dirs.push(p);
+  }
+  return dirs.sort();
+}
+
+// What Enter does, and what the per-item buttons offer. Keys are the values of
+// the claudeHelper.folderSearchAction setting.
+const FOLDER_ACTIONS = {
+  openFolder: {
+    icon: 'folder-opened', label: 'Open Folder in New Window',
+    run: (p) => vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(p), { forceNewWindow: true }),
+  },
+  terminal: {
+    icon: 'terminal', label: 'Open Terminal Here',
+    run: (p) => {
+      const t = vscode.window.createTerminal({ name: path.basename(p), cwd: p });
+      t.show();
+      moveTerminalTabToEnd();
+    },
+  },
+  startClaude: {
+    icon: 'rocket', label: 'Start Claude Here',
+    run: (p) => startClaude(favFromUri(vscode.Uri.file(p))),
+  },
+  reveal: {
+    icon: 'eye', label: 'Reveal in Explorer',
+    run: (p) => vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(p)),
+  },
+  favourite: {
+    icon: 'star-add', label: 'Add to Favourites',
+    run: (p, ctx) => addFavouriteFromUri(ctx, vscode.Uri.file(p), { askLabel: false }),
+  },
+};
+
+async function goToFolder(ctx) {
+  const defaultKey = FOLDER_ACTIONS[cfg().get('folderSearchAction')] ? cfg().get('folderSearchAction') : 'openFolder';
+  const buttons = Object.entries(FOLDER_ACTIONS)
+    .filter(([key]) => key !== defaultKey)
+    .map(([key, a]) => ({ key, iconPath: new vscode.ThemeIcon(a.icon), tooltip: a.label }));
+
+  const qp = vscode.window.createQuickPick();
+  qp.placeholder = `Folder name… (Enter: ${FOLDER_ACTIONS[defaultKey].label})`;
+  qp.matchOnDescription = true;
+  qp.busy = true;
+  let alive = true;
+  qp.onDidHide(() => { alive = false; qp.dispose(); });
+
+  const run = (key, dir) => {
+    qp.hide();
+    Promise.resolve(FOLDER_ACTIONS[key].run(dir, ctx)).catch((e) =>
+      vscode.window.showErrorMessage(`Claude Code Helper: ${e && e.message ? e.message : e}`));
+  };
+  qp.onDidAccept(() => {
+    const item = qp.selectedItems[0];
+    if (item) run(defaultKey, item.dir);
+  });
+  qp.onDidTriggerItemButton((e) => run(e.button.key, e.item.dir));
+  qp.show();
+
+  const dirs = await listFolders();
+  if (!alive) return;
+  if (!dirs.length) {
+    qp.hide();
+    vscode.window.showWarningMessage(
+      `Claude Code Helper: nothing to search. Check claudeHelper.folderSearchRoots (${(cfg().get('folderSearchRoots') || []).join(', ') || 'unset'}).`);
+    return;
+  }
+  qp.items = dirs.map((d) => ({
+    label: path.basename(d),
+    description: shortHome(path.dirname(d)),
+    dir: d,
+    buttons,
+  }));
+  qp.busy = false;
+}
+
 // ─── activation ──────────────────────────────────────────────────────────────
 
 async function applyFastHoverOnce(context) {
@@ -3222,6 +3361,7 @@ function activate(context) {
     for (const f of folders) await addFavouriteFromUri(context, f.uri, { askLabel: folders.length === 1 });
   });
   reg('claudeHelper.addFromExplorer', (uri) => addFavouriteFromUri(context, uri));
+  reg('claudeHelper.goToFolder', () => goToFolder(context));
   reg('claudeHelper.newSession', () => newScratchSession());
   reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
