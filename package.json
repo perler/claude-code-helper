@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.29.0",
+  "version": "0.30.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -83,6 +83,12 @@
         "command": "claudeHelper.goToFolder",
         "title": "Go to Folder…",
         "icon": "$(search)",
+        "category": "Claude Code Helper"
+      },
+      {
+        "command": "claudeHelper.folderSearchNewSubfolder",
+        "title": "Go to Folder: New Subfolder & Start Claude",
+        "icon": "$(new-folder)",
         "category": "Claude Code Helper"
       },
       {
@@ -365,6 +371,12 @@
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "claudeHelper.folderSearchNewSubfolder",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "claudeHelper.goToFolder",
@@ -724,6 +736,12 @@
         "mac": "cmd+alt+p"
       },
       {
+        "command": "claudeHelper.folderSearchNewSubfolder",
+        "key": "ctrl+enter",
+        "mac": "cmd+enter",
+        "when": "claudeHelper.folderSearchOpen"
+      },
+      {
         "command": "claudeHelper.revealActiveTerminalCwd",
         "key": "ctrl+alt+t",
         "mac": "cmd+alt+t"
@@ -817,6 +835,7 @@
             "openFolder",
             "terminal",
             "startClaude",
+            "newFolder",
             "reveal",
             "favourite"
           ],
@@ -824,6 +843,7 @@
             "Open the folder in a new window",
             "Open a terminal there",
             "Start Claude there",
+            "Create a subfolder there and start Claude in it",
             "Reveal it in the Explorer",
             "Add it to Claude Favourites"
           ],

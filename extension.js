@@ -3231,6 +3231,10 @@ const FOLDER_ACTIONS = {
     icon: 'rocket', label: 'Start Claude Here',
     run: (p) => startClaude(favFromUri(vscode.Uri.file(p))),
   },
+  newFolder: {
+    icon: 'new-folder', label: 'New Subfolder & Start Claude',
+    run: (p) => newFolderAndStartClaudeFromUri(vscode.Uri.file(p)),
+  },
   reveal: {
     icon: 'eye', label: 'Reveal in Explorer',
     // revealInExplorer silently does nothing for a path outside every open root,
@@ -3258,6 +3262,10 @@ const FOLDER_ACTIONS = {
   },
 };
 
+// A QuickPick cannot see key chords itself, so the Ctrl+Enter shortcut arrives
+// as a normal command and needs a handle on the picker that is currently open.
+let folderSearchOpen = null;   // { dir, run } while visible, null otherwise
+
 async function goToFolder(ctx) {
   const defaultKey = FOLDER_ACTIONS[cfg().get('folderSearchAction')] ? cfg().get('folderSearchAction') : 'openFolder';
   const buttons = Object.entries(FOLDER_ACTIONS)
@@ -3265,11 +3273,18 @@ async function goToFolder(ctx) {
     .map(([key, a]) => ({ key, iconPath: new vscode.ThemeIcon(a.icon), tooltip: a.label }));
 
   const qp = vscode.window.createQuickPick();
-  qp.placeholder = `Folder name… (Enter: ${FOLDER_ACTIONS[defaultKey].label})`;
+  qp.placeholder = `Folder name… (Enter: ${FOLDER_ACTIONS[defaultKey].label} · Ctrl+Enter: New Subfolder & Start Claude)`;
   qp.matchOnDescription = true;
   qp.busy = true;
   let alive = true;
-  qp.onDidHide(() => { alive = false; qp.dispose(); });
+  const setOpenContext = (v) =>
+    vscode.commands.executeCommand('setContext', 'claudeHelper.folderSearchOpen', v);
+  qp.onDidHide(() => {
+    alive = false;
+    folderSearchOpen = null;
+    setOpenContext(false);
+    qp.dispose();
+  });
 
   const run = (key, dir) => {
     qp.hide();
@@ -3281,6 +3296,11 @@ async function goToFolder(ctx) {
     if (item) run(defaultKey, item.dir);
   });
   qp.onDidTriggerItemButton((e) => run(e.button.key, e.item.dir));
+  qp.onDidChangeActive((items) => {
+    if (folderSearchOpen) folderSearchOpen.dir = items[0] ? items[0].dir : null;
+  });
+  folderSearchOpen = { dir: null, run };
+  setOpenContext(true);
   qp.show();
 
   const dirs = await listFolders();
@@ -3379,6 +3399,9 @@ function activate(context) {
   });
   reg('claudeHelper.addFromExplorer', (uri) => addFavouriteFromUri(context, uri));
   reg('claudeHelper.goToFolder', () => goToFolder(context));
+  reg('claudeHelper.folderSearchNewSubfolder', () => {
+    if (folderSearchOpen && folderSearchOpen.dir) folderSearchOpen.run('newFolder', folderSearchOpen.dir);
+  });
   reg('claudeHelper.newSession', () => newScratchSession());
   reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
