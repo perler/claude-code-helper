@@ -2510,6 +2510,26 @@ function startTabStateWatcher(context) {
     const watcher = fs.watch(dir, () => tabStateChanged());
     context.subscriptions.push({ dispose: () => watcher.close() });
   } catch { /* dir unwritable — badges just never appear */ }
+
+  // fs.watch alone is not enough: observed live, a session's file went input ->
+  // working while its tab kept showing the stale "?" for hours, because no change
+  // event ever reached the provider. A badge that lies is worse than no badge, so
+  // poll the directory as well and fire whenever the snapshot differs. Cost is a
+  // readdir plus a stat per file every two seconds, over a handful of files.
+  let last = '';
+  const poll = setInterval(() => {
+    let now = '';
+    try {
+      for (const f of fs.readdirSync(dir).sort()) {
+        const st = fs.statSync(path.join(dir, f));
+        now += `${f}:${st.mtimeMs}:${st.size};`;
+      }
+    } catch { return; }
+    if (now === last) return;
+    last = now;
+    tabStateChanged();
+  }, 2000);
+  context.subscriptions.push({ dispose: () => clearInterval(poll) });
 }
 
 // ─── recent sessions ─────────────────────────────────────────────────────────
