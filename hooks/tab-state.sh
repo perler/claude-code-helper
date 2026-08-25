@@ -8,31 +8,51 @@
 # See readme.md "Tab state decorations" for the settings.json hook block and
 # the event -> argument mapping.
 #
-# CCH_TAB_ID is set by the extension in a Claude session's environment when it
-# launches that session (via the terminal's `env` option, or threaded into the
-# tmux/dtach master's spawn — see extension.js). A session started any other
-# way (a plain shell, a headless bridge run without the extension) has no
-# CCH_TAB_ID; this script is then a silent no-op by design — never guess which
-# tab a session belongs to.
+# TWO keys are written, because a session can be identified two ways:
+#
+#   <uuid>          CCH_TAB_ID, set by the extension in the environment of a
+#                   session it launched. Exact: one tab, one id, no ambiguity.
+#   cwd-<sha1>      the session's working directory. Works for sessions that
+#                   were already running before CCH_TAB_ID existed (their
+#                   environment is fixed and can never gain it), so a reload
+#                   lights those tabs up too. The extension only trusts this
+#                   key when exactly one terminal sits in that directory —
+#                   two sessions in one folder are indistinguishable here.
+#
+# A session with neither (no CCH_TAB_ID and no resolvable cwd) leaves nothing
+# behind; the tab simply stays undecorated. Never guess which tab is which.
 
 set -u
 
 state="${1:-}"
 
-[[ "${CCH_TAB_ID:-}" =~ ^[0-9a-f-]{36}$ ]] || exit 0
-
 dir="$HOME/.cache/claude-tab-state"
-file="$dir/$CCH_TAB_ID"
-
 mkdir -p "$dir" 2>/dev/null || exit 0
 
-if [ "$state" = "delete" ]; then
-  rm -f "$file" 2>/dev/null
-  exit 0
+keys=()
+
+if [[ "${CCH_TAB_ID:-}" =~ ^[0-9a-f-]{36}$ ]]; then
+  keys+=("$CCH_TAB_ID")
 fi
 
-case "$state" in
-  working|input|idle) printf '%s' "$state" > "$file" 2>/dev/null ;;
-esac
+# CLAUDE_PROJECT_DIR is set by Claude Code for hook processes; PWD is the
+# fallback, since hooks run in the session's own directory.
+cwd="${CLAUDE_PROJECT_DIR:-$PWD}"
+if [ -n "$cwd" ] && command -v sha1sum >/dev/null 2>&1; then
+  keys+=("cwd-$(printf '%s' "$cwd" | sha1sum | cut -d' ' -f1)")
+fi
+
+[ ${#keys[@]} -gt 0 ] || exit 0
+
+for key in "${keys[@]}"; do
+  file="$dir/$key"
+  if [ "$state" = "delete" ]; then
+    rm -f "$file" 2>/dev/null
+    continue
+  fi
+  case "$state" in
+    working|input|idle) printf '%s' "$state" > "$file" 2>/dev/null ;;
+  esac
+done
 
 exit 0

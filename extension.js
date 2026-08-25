@@ -2405,6 +2405,12 @@ function tabStateSweepStale() {
         if (entry.startsWith('CCH_TAB_ID=')) { live.add(entry.slice('CCH_TAB_ID='.length)); break; }
       }
     } catch { /* process gone or not ours */ }
+    // cwd- keys belong to a directory, not a process id, so a directory that
+    // still has any live process of ours in it keeps its state file.
+    try {
+      const cwd = fs.readlinkSync(`/proc/${pid}/cwd`);
+      live.add('cwd-' + crypto.createHash('sha1').update(cwd).digest('hex'));
+    } catch { /* not ours */ }
   }
   for (const f of files) {
     if (live.has(f)) continue;
@@ -2444,6 +2450,27 @@ function tabStateIdFromEnviron(terminal) {
   return result;
 }
 
+// Fallback identity for sessions that were already running before CCH_TAB_ID
+// existed: their environment is fixed and can never gain one, so key on the
+// working directory instead, which the hook also writes (see hooks/tab-state.sh).
+// Only trusted when exactly ONE tracked terminal sits in that directory — with
+// two sessions in one folder the key cannot say which tab is which, and a badge
+// on the wrong tab is worse than none.
+function tabStateTerminalCwd(terminal) {
+  const pid = tabStatePidByTerminal.get(terminal);
+  if (!pid) return null;
+  try { return fs.readlinkSync(`/proc/${pid}/cwd`); } catch { return null; }
+}
+function tabStateCwdKey(terminal) {
+  const cwd = tabStateTerminalCwd(terminal);
+  if (!cwd) return null;
+  let seen = 0;
+  for (const t of tabStateTerminalsById.values()) {
+    if (tabStateTerminalCwd(t) === cwd && ++seen > 1) return null;
+  }
+  return 'cwd-' + crypto.createHash('sha1').update(cwd).digest('hex');
+}
+
 class TabStateDecorationProvider {
   constructor() {
     this._em = new vscode.EventEmitter();
@@ -2456,7 +2483,7 @@ class TabStateDecorationProvider {
     if (!m) return undefined;
     const terminal = tabStateTerminalsById.get(Number(m[1]));
     if (!terminal) return undefined;
-    const tabId = tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal);
+    const tabId = tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal) || tabStateCwdKey(terminal);
     if (!tabId) return undefined;
     let state;
     try { state = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { return undefined; }

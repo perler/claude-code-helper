@@ -72,6 +72,14 @@ Add:
 
 Merge these into the existing `hooks` block if one is already there — don't replace it.
 
+**Sessions that predate `CCH_TAB_ID`.** A Claude session that was already running when this
+feature was installed can never gain the variable — its environment was fixed when it started. For
+those, the hook also writes a second key, `cwd-<sha1 of the session's directory>`, and the
+extension falls back to it: terminal's shell pid -> `/proc/<pid>/cwd` -> same hash. It only trusts
+that key when **exactly one** terminal in the window sits in that directory; with two sessions open
+on the same folder the key cannot say which tab is which, so neither gets a badge. Freshly launched
+sessions always use the exact uuid and are never affected by that.
+
 **Survives a window reload.** A dtach-mode (or plain internal-terminal-mode) terminal is the same
 live OS process before and after a code-server window reload — VS Code just reconnects its pty,
 it never re-runs the launch code — so its shell's original environment, `CCH_TAB_ID` included, is
