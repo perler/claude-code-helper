@@ -1225,6 +1225,23 @@ function clientProject(code, projects) {
     || (cand.length === 1 ? cand[0] : null);
 }
 
+// A repo can be an Asana project in its own right — ~/projects/healthboard and the
+// project "Healthboard" are one thing under two names. Nothing recorded that link, so a
+// repo target carried no gid, and the exact-task lookup only recognises a task whose
+// project is one of the destinations: "Nährstoff Display" — a task sitting in Healthboard
+// — matched nothing and was handed back to the model to route on wordplay.
+//
+// Only an exact name match counts, and a project already claimed by a client or house
+// target is not up for grabs. A tie is dropped rather than guessed: filing work in the
+// wrong project is worse than not finding it.
+function repoProject(name, projects, used) {
+  const want = name.trim().toLowerCase();
+  const cand = projects.filter((p) => !used.has(p.gid)
+    && !/\bold\b/i.test(p.name)
+    && p.name.trim().toLowerCase() === want);
+  return cand.length === 1 ? cand[0] : null;
+}
+
 // One flat list of everywhere an entry can go: every client, the house projects, and
 // every local repo.
 //
@@ -1273,10 +1290,21 @@ function listTargets() {
     });
   }
   const taken = new Set(out.map((t) => t.dir).filter(Boolean));
+  const used = new Set(out.map((t) => t.gid).filter(Boolean));
   for (const name of dirsIn(projectsRoot())) {
     const dir = path.join(projectsRoot(), name);
     if (taken.has(dir)) continue;   // 'infra' is already in as its Asana project
-    out.push({ id: `repo:${name}`, name, dir, create: false, desc: 'local dev project — session runs in the repo' });
+    const p = repoProject(name, projects, used);
+    if (p) used.add(p.gid);
+    out.push({
+      id: `repo:${name}`,
+      name,
+      gid: p ? p.gid : '',
+      dir,
+      create: false,
+      desc: p ? `local dev project — its work is filed in Asana project "${p.name}"`
+              : 'local dev project — session runs in the repo',
+    });
   }
   return out;
 }
