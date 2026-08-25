@@ -44,6 +44,22 @@ fi
 
 [ ${#keys[@]} -gt 0 ] || exit 0
 
+# The Notification event covers two unrelated things: a real permission prompt,
+# and a "no new message for 60s" nudge (notificationType idle_prompt). The nudge
+# also fires MID-TURN, during a long tool call — so writing `input` on every
+# notification marks a busy session as waiting for you, and it stays that way
+# until the turn ends. Observed live: a working session showed "?" for hours.
+# So an idle nudge may only assert `input` when the turn is not running.
+if [ "$state" = "input" ]; then
+  payload=$(timeout 1 cat 2>/dev/null || true)
+  case "$payload" in
+    *"waiting for your input"*|*idle_prompt*)
+      current=$(cat "$dir/${keys[0]}" 2>/dev/null || true)
+      [ "$current" = "working" ] && exit 0
+      ;;
+  esac
+fi
+
 for key in "${keys[@]}"; do
   file="$dir/$key"
   if [ "$state" = "delete" ]; then
