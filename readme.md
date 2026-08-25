@@ -34,3 +34,53 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.folderSearchDepth` | `3` | Levels below each root to descend |
 | `claudeHelper.folderSearchExcludes` | `node_modules .git venv .venv dist build __pycache__` | Directory names skipped |
 | `claudeHelper.folderSearchAction` | `reveal` | What Enter does in Go to Folder… |
+| `claudeHelper.tabStateDecorations` | `true` | Show working/waiting/idle badges on Claude terminal tabs (needs the hook below) |
+
+## Tab state decorations
+
+A badge and colour on a Claude session's terminal editor tab — `*` (dimmed) while it's working,
+`?` (warning colour) while it's waiting for your answer, nothing while idle. No change to the
+tab's title or icon.
+
+The extension generates a `CCH_TAB_ID` uuid per launched session and puts it in that session's
+environment. A hook script, `hooks/tab-state.sh` in this repo, reads it back and writes one word
+to `~/.cache/claude-tab-state/$CCH_TAB_ID`; the extension watches that directory and renders the
+file's contents as the tab's decoration. A session started outside this extension has no
+`CCH_TAB_ID`, so the hook is a silent no-op for it — no crash, no stray file.
+
+**This needs hooks registered in `~/.claude/settings.json` — the extension does not add them.**
+Add:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh working" }] }
+    ],
+    "Notification": [
+      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh input" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh idle" }] }
+    ],
+    "SessionEnd": [
+      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh delete" }] }
+    ]
+  }
+}
+```
+
+Merge these into the existing `hooks` block if one is already there — don't replace it.
+
+**Survives a window reload.** A dtach-mode (or plain internal-terminal-mode) terminal is the same
+live OS process before and after a code-server window reload — VS Code just reconnects its pty,
+it never re-runs the launch code — so its shell's original environment, `CCH_TAB_ID` included, is
+still there to read back from `/proc/<pid>/environ`. The extension uses that as a fallback whenever
+a terminal wasn't launched (or registered) in the current window session, so badges keep working
+after a reload without needing anything re-launched.
+
+**Known limitation: tmux-mode sessions never get a badge.** With `claudeHelper.useTmux` on
+(the default), the terminal tab only ever runs `tmux attach` — a different OS process from the
+tmux server that actually holds Claude — so there's no live process whose environment could ever
+be read back for it, reload or not. Turn `useTmux` off (dtach takes over, also on by default) if
+you want the badges.

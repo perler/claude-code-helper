@@ -156,9 +156,13 @@ function runInInternalTerminal(name, cwd, cmd, icon) {
   let terminal;
   if (cfg().get('reuseTerminal')) terminal = findReusableTerminal(cwd);
   const created = !terminal;
-  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd, iconPath: icon });
+  // Claude runs directly in this terminal's own shell, so CCH_TAB_ID on its env
+  // reaches the process unconditionally — unlike the tmux/dtach launchers, there's
+  // no separate master to thread it through.
+  const tabId = crypto.randomUUID();
+  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd, iconPath: icon, env: { CCH_TAB_ID: tabId } });
   terminal.show();
-  if (created) moveTerminalTabToEnd();
+  if (created) { moveTerminalTabToEnd(); registerTabState(terminal, tabId); }
   terminal.sendText(cmd);
   return terminal;
 }
@@ -591,7 +595,11 @@ function launchClaudeTmux(fav, resumeArg, initialPrompt) {
   const { id, runArg } = resolveSessionId(dir, resumeArg);
   let entry = readAgentIndex().find((e) => e.sessionId === id);
   let tmuxName = entry && entry.tmuxName;
-  if (!tmuxName || !tmuxHasSession(tmuxName)) {
+  // Only a freshly-spawned master's env can carry CCH_TAB_ID (see below) — the
+  // attach terminal created further down never runs Claude itself in this mode.
+  const isNewMaster = !tmuxName || !tmuxHasSession(tmuxName);
+  const tabId = crypto.randomUUID();
+  if (isNewMaster) {
     tmuxName = tmuxName || uniqueAgentTmuxName(dir);
     const parts = [bin];
     if (c.get('skipPermissions')) parts.push('--dangerously-skip-permissions');
@@ -609,11 +617,14 @@ function launchClaudeTmux(fav, resumeArg, initialPrompt) {
     // lives outside code-server's cgroup. Only the first session starts the server;
     // later new-sessions just reach the existing one, so its slice is set once.
     const tmuxArgs = ['-L', agentSocket(), 'new-session', '-d', '-s', tmuxName, '-c', dir, `bash ${runner}`];
+    // CCH_TAB_ID rides in here (not on the attach terminal's env below) because
+    // this is the process that actually forks Claude — the attach terminal only
+    // ever runs `tmux attach`.
     try {
       if (userBusReachable())
-        cp.execFileSync('systemd-run', ['--user', '--scope', '--slice=claude.slice', ...SCOPE_LIMITS, '--quiet', 'tmux', ...tmuxArgs], { env: sessionSliceEnv() });
+        cp.execFileSync('systemd-run', ['--user', '--scope', '--slice=claude.slice', ...SCOPE_LIMITS, '--quiet', 'tmux', ...tmuxArgs], { env: { ...sessionSliceEnv(), CCH_TAB_ID: tabId } });
       else
-        cp.execFileSync('tmux', tmuxArgs);
+        cp.execFileSync('tmux', tmuxArgs, { env: { ...process.env, CCH_TAB_ID: tabId } });
     } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: tmux launch failed — ${e.message}`); return; }
     cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', '0']);
     cp.spawnSync('tmux', ['-L', agentSocket(), 'set-option', '-g', 'mouse', 'off']);
@@ -632,6 +643,15 @@ function launchClaudeTmux(fav, resumeArg, initialPrompt) {
   if (created) moveTerminalTabToEnd();
   terminal.sendText(`tmux -L ${agentSocket()} attach -t ${tmuxName}`);
   registerSessionTerminal(id, terminal);
+  // tmux mode never gets a decoration, new master or reattach alike: the attach
+  // terminal above only ever runs `tmux attach` — it is a different OS process
+  // from the tmux server that actually forked Claude, so there is no live
+  // process whose /proc/<pid>/environ could tell us CCH_TAB_ID even when we
+  // know it (unlike dtach, where the attach terminal's own shell IS the
+  // process the master was forked from). Registering only on a fresh master
+  // keeps the in-memory map honest, but reads it back through nothing durable —
+  // known limitation, documented in readme.md "Tab state decorations".
+  if (isNewMaster) registerTabState(terminal, tabId);
   return terminal;
 }
 
@@ -712,9 +732,23 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   } catch (e) { vscode.window.showErrorMessage(`Claude Code Helper: ${e.message}`); return; }
   // name = bare folder/label so VS Code drops the duplicate ${cwdFolder} description.
   const name = fav.label || path.basename(dir);
+  // Whether a live master already answers this socket, checked before the `dtach -n`
+  // below either forks a brand-new one — inheriting THIS terminal's shell's own env,
+  // CCH_TAB_ID included, since `dtach -n` runs as its child — or silently no-ops
+  // against an existing one whose env was fixed at its own, unrelated creation.
+  // Only pass CCH_TAB_ID when we're genuinely creating the master: on a pure
+  // reattach it would sit in this terminal's env unused (a fresh id nothing ever
+  // writes to), never mistaken for real because it resolves to no state file, but
+  // there's no reason to plant it either.
+  const wasLive = !!sessionDtachSocket(id);
+  const tabId = crypto.randomUUID();
   let terminal = cfg().get('reuseTerminal') ? findReusableTerminal(dir) : null;
   const created = !terminal;
-  if (!terminal) terminal = vscode.window.createTerminal({ name, cwd: dir, iconPath: launchIcon(resumeArg) });
+  if (!terminal) {
+    const opts = { name, cwd: dir, iconPath: launchIcon(resumeArg) };
+    if (!wasLive) opts.env = { CCH_TAB_ID: tabId };
+    terminal = vscode.window.createTerminal(opts);
+  }
   terminal.show();
   if (created) moveTerminalTabToEnd();
   // Create the master detached (no controlling terminal), then attach a client.
@@ -746,6 +780,16 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   // plumbing, not something the user typed, so it shouldn't clutter their history.
   terminal.sendText(` ${steal}; ${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
   registerSessionTerminal(id, terminal);
+  // Register unconditionally, including on a reattach (wasLive): when !wasLive,
+  // tabId genuinely is this terminal's shell's env, so registering it is exactly
+  // correct and is what the decoration provider's fast path will read for the
+  // rest of this window's life. When wasLive, tabId was never actually put into
+  // this terminal's env (see the opts.env gate above) — registering it anyway
+  // is a harmless no-op: the fast path returns an id no hook ever writes to, so
+  // it resolves to no decoration, exactly as if nothing were registered at all
+  // (falling through would hit the same terminal's own /proc/<pid>/environ,
+  // which — for the same reason — has nothing either).
+  registerTabState(terminal, tabId);
   return terminal;
 }
 
@@ -2272,6 +2316,175 @@ class TerminalsProvider {
   }
 }
 
+// ─── tab state decorations ───────────────────────────────────────────────────
+//
+// Shows, on a Claude session's terminal editor tab, whether it is working,
+// waiting for an answer, or idle — via VS Code's file-decoration API, without
+// touching the tab's title or icon. See readme.md "Tab state decorations".
+//
+// A terminal editor tab is identified only by a `vscode-terminal:/<workspaceId>/
+// <instanceId>` URI (its fragment, where a launch would normally carry the
+// session name, is always empty — VS Code builds the resource before the name is
+// applied). The public API never exposes instanceId directly, so it is tracked
+// by counting terminals in creation order ourselves and trusting that order to
+// match VS Code's internal one: seed from the terminals already open at
+// activation (covers a window-reload restore, verified to land in the same
+// order), then increment on every onDidOpenTerminal. instanceIds are never
+// reused within a window, so closed entries are dropped, not renumbered.
+//
+// A terminal survives a code-server window reload as the SAME live OS process —
+// VS Code just reconnects its pty, the launcher functions above never run again —
+// so after a reload nothing here has been re-registered for it. registerTabState()
+// below is therefore only a same-window fast path, not the source of truth: the
+// decoration provider falls back to reading the terminal's own live process's
+// environment (`/proc/<pid>/environ`), which still carries whatever CCH_TAB_ID
+// VS Code set on it at creation, unaffected by the reload. This recovers a real
+// id wherever the terminal's own shell IS (or directly forked) the process
+// running Claude — the plain internal-terminal launcher, and dtach mode, whose
+// attach terminal's shell is the very process `dtach -n` forked the master
+// from. tmux mode's attach terminal is a different process from the tmux
+// server that forked Claude, so it never has anything to read and stays
+// undecorated regardless (known limitation, see readme.md).
+let tabStateTerminalCounter = 0;
+const tabStateTerminalsById = new Map();  // instanceId -> vscode.Terminal
+const tabStateIdByTerminal = new Map();   // vscode.Terminal -> CCH_TAB_ID uuid (this window minted it)
+const tabStatePidByTerminal = new Map();  // vscode.Terminal -> pid, once terminal.processId resolves
+const tabStateEnvIdCache = new Map();     // vscode.Terminal -> CCH_TAB_ID uuid | null, read from /proc once
+let tabStateProvider;
+
+function tabStateDecorationsEnabled() { return cfg().get('tabStateDecorations') !== false; }
+function tabStateDir() { return path.join(os.homedir(), '.cache', 'claude-tab-state'); }
+
+// terminal.processId is a Thenable<number|undefined> — VS Code hasn't necessarily
+// resolved it yet when a terminal first appears, so this is fire-and-forget; a
+// decoration query that lands before it resolves just tries again next time
+// (tabStateIdFromEnviron only caches once a pid is actually on file).
+function tabStateResolvePid(t) {
+  if (!t || !t.processId) return;
+  t.processId.then(
+    (pid) => { if (typeof pid === 'number') tabStatePidByTerminal.set(t, pid); },
+    () => {}
+  );
+}
+
+function tabStateSeedTerminals() {
+  for (const t of vscode.window.terminals) { tabStateTerminalsById.set(++tabStateTerminalCounter, t); tabStateResolvePid(t); }
+}
+function tabStateTerminalOpened(t) { tabStateTerminalsById.set(++tabStateTerminalCounter, t); tabStateResolvePid(t); }
+function tabStateTerminalClosed(t) {
+  for (const [instanceId, term] of tabStateTerminalsById) {
+    if (term !== t) continue;
+    tabStateTerminalsById.delete(instanceId);
+    break;
+  }
+  tabStatePidByTerminal.delete(t);
+  tabStateEnvIdCache.delete(t);
+  tabStateIdByTerminal.delete(t);
+  // Deliberately NOT deleting the state file here. onDidCloseTerminal also fires
+  // while the extension host tears down on a window reload, and at that moment a
+  // dtach-backed session is very much alive — deleting then wipes exactly the
+  // "waiting for your answer" flag the user reloaded to get back to (verified:
+  // the badge vanished after a reload while claude was still running). The
+  // authoritative end-of-life signal is the SessionEnd hook's `delete`; a session
+  // killed hard enough to skip it is cleaned up by the sweep below.
+}
+
+// Drop state files whose CCH_TAB_ID no longer belongs to any live process. Runs
+// once, a few seconds after activation, so a hard-killed session cannot leave a
+// badge behind for the next terminal that happens to reuse the instance id.
+function tabStateSweepStale() {
+  let files;
+  try { files = fs.readdirSync(tabStateDir()); } catch { return; }
+  if (!files.length) return;
+  const live = new Set();
+  let pids;
+  try { pids = fs.readdirSync('/proc').filter((d) => /^\d+$/.test(d)); } catch { return; }
+  for (const pid of pids) {
+    try {
+      for (const entry of fs.readFileSync(`/proc/${pid}/environ`, 'latin1').split('\0')) {
+        if (entry.startsWith('CCH_TAB_ID=')) { live.add(entry.slice('CCH_TAB_ID='.length)); break; }
+      }
+    } catch { /* process gone or not ours */ }
+  }
+  for (const f of files) {
+    if (live.has(f)) continue;
+    try { fs.unlinkSync(path.join(tabStateDir(), f)); } catch {}
+  }
+}
+
+// Called once a createTerminal() call has actually put CCH_TAB_ID=tabId into a
+// Claude session's environment — never for a terminal that only attaches to a
+// session started (or already running) some other way.
+function registerTabState(terminal, tabId) {
+  tabStateIdByTerminal.set(terminal, tabId);
+}
+
+// CCH_TAB_ID read back from the terminal's own live process, for a terminal this
+// window never registered itself (typically: restored after a window reload).
+// /proc/<pid>/environ is NUL-separated KEY=VALUE with no trailing NUL guaranteed,
+// hence the split rather than a line-based read. Cached per terminal — once the
+// pid is known, the answer can't change for that process's lifetime — except while
+// the pid is still unresolved, when null is returned but NOT cached, so the next
+// query (the debounced watcher fires often) retries instead of getting stuck.
+function tabStateIdFromEnviron(terminal) {
+  if (tabStateEnvIdCache.has(terminal)) return tabStateEnvIdCache.get(terminal);
+  const pid = tabStatePidByTerminal.get(terminal);
+  if (!pid) return null;
+  let result = null;
+  try {
+    const raw = fs.readFileSync(`/proc/${pid}/environ`, 'latin1');
+    for (const entry of raw.split('\0')) {
+      if (!entry.startsWith('CCH_TAB_ID=')) continue;
+      const v = entry.slice('CCH_TAB_ID='.length);
+      if (/^[0-9a-f-]{36}$/.test(v)) result = v;
+      break;
+    }
+  } catch { /* pid gone, or /proc unreadable — no decoration, same as an unknown id */ }
+  tabStateEnvIdCache.set(terminal, result);
+  return result;
+}
+
+class TabStateDecorationProvider {
+  constructor() {
+    this._em = new vscode.EventEmitter();
+    this.onDidChangeFileDecorations = this._em.event;
+  }
+  fireAll() { this._em.fire(undefined); } // undefined = re-query every known resource
+  provideFileDecoration(uri) {
+    if (!tabStateDecorationsEnabled() || uri.scheme !== 'vscode-terminal') return undefined;
+    const m = /\/(\d+)$/.exec(uri.path);
+    if (!m) return undefined;
+    const terminal = tabStateTerminalsById.get(Number(m[1]));
+    if (!terminal) return undefined;
+    const tabId = tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal);
+    if (!tabId) return undefined;
+    let state;
+    try { state = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { return undefined; }
+    if (state === 'input') return { badge: '?', color: new vscode.ThemeColor('list.warningForeground'), tooltip: 'Claude is waiting for your answer' };
+    if (state === 'working') return { badge: '*', color: new vscode.ThemeColor('list.deemphasizedForeground'), tooltip: 'Claude is working' };
+    return undefined; // idle, or a value we don't render — no decoration
+  }
+}
+
+// Debounced so a burst of hook writes (a busy session flipping working/idle/working)
+// triggers one re-query, not one per file event.
+let tabStateWatchDebounce;
+function tabStateChanged() {
+  clearTimeout(tabStateWatchDebounce);
+  tabStateWatchDebounce = setTimeout(() => { if (tabStateProvider) tabStateProvider.fireAll(); }, 150);
+}
+
+// Required: without a change event, an already-open tab is never re-queried after
+// its first render, however many times the hook rewrites its state file.
+function startTabStateWatcher(context) {
+  const dir = tabStateDir();
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const watcher = fs.watch(dir, () => tabStateChanged());
+    context.subscriptions.push({ dispose: () => watcher.close() });
+  } catch { /* dir unwritable — badges just never appear */ }
+}
+
 // ─── recent sessions ─────────────────────────────────────────────────────────
 
 function scanRecentSessions() {
@@ -3370,6 +3583,17 @@ function activate(context) {
   extCtx = context;
   applyFastHoverOnce(context);
   vscode.commands.executeCommand('setContext', 'claudeHelper.hasHiddenSessions', hiddenSessions().size > 0);
+
+  // Tab state decorations — see the "tab state decorations" section above.
+  tabStateSeedTerminals();
+  tabStateProvider = new TabStateDecorationProvider();
+  context.subscriptions.push(vscode.window.registerFileDecorationProvider(tabStateProvider));
+  context.subscriptions.push(
+    vscode.window.onDidOpenTerminal((t) => tabStateTerminalOpened(t)),
+    vscode.window.onDidCloseTerminal((t) => tabStateTerminalClosed(t))
+  );
+  startTabStateWatcher(context);
+  setTimeout(tabStateSweepStale, 5000);
   context.subscriptions.push(vscode.window.registerWebviewViewProvider(
     'claudeHelper.ask', new AskViewProvider(), { webviewOptions: { retainContextWhenHidden: true } }
   ));
