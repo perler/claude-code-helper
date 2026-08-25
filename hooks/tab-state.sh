@@ -52,6 +52,7 @@ fi
 # So an idle nudge may only assert `input` when the turn is not running.
 if [ "$state" = "input" ]; then
   payload=$(timeout 1 cat 2>/dev/null || true)
+  [ -n "${CCH_TAB_TRACE:-}" ] && printf '%s\n' "$(date +%H:%M:%S) state=$state id=${CCH_TAB_ID:-none} payload=$payload" >> "$HOME/.cache/claude-tab-state.trace" 2>/dev/null
   case "$payload" in
     *"waiting for your input"*|*idle_prompt*)
       current=$(cat "$dir/${keys[0]}" 2>/dev/null || true)
@@ -59,6 +60,8 @@ if [ "$state" = "input" ]; then
       ;;
   esac
 fi
+
+[ -n "${CCH_TAB_TRACE:-}" ] && printf '%s\n' "$(date +%H:%M:%S) WRITE state=$state keys=${keys[*]}" >> "$HOME/.cache/claude-tab-state.trace" 2>/dev/null
 
 for key in "${keys[@]}"; do
   file="$dir/$key"

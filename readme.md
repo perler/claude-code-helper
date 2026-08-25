@@ -65,12 +65,27 @@ Add:
     ],
     "SessionEnd": [
       { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh delete" }] }
+    ],
+    "PreToolUse": [
+      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh working" }] }
     ]
   }
 }
 ```
 
 Merge these into the existing `hooks` block if one is already there — don't replace it.
+
+**Why `PreToolUse` is in that list.** `Notification` is the only event that reports "waiting for
+you", but nothing reports "the user answered". Approving a permission prompt fires no hook at all,
+so without a second source the tab would sit on `?` for the rest of the turn even though Claude
+went straight back to work — which is exactly what happened in practice. A tool call is
+unambiguous evidence that the session is working, so `PreToolUse` re-asserts `working` and the
+badge self-heals within one tool call, whatever left it stale. Cost is one short shell script per
+tool call.
+
+Set `CCH_TAB_TRACE=1` in a session's environment to have the hook append every invocation, with
+the notification payload, to `~/.cache/claude-tab-state.trace` — the fastest way to see which
+event actually fired when a badge looks wrong.
 
 **Sessions that predate `CCH_TAB_ID`.** A Claude session that was already running when this
 feature was installed can never gain the variable — its environment was fixed when it started. For
