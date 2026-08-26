@@ -55,10 +55,16 @@ without making a tool call keeps the `input` that nudge wrote — the `PreToolUs
 nothing to fire on. Seen live on 2026-08-26: a session sat on `?` for fourteen minutes while the CLI
 reported it `busy`. So the extension also polls the CLI every 4 seconds (asynchronously — the call
 measures ~470ms and must never run on the decoration path), maps each running session's pid to its
-`CCH_TAB_ID` via `/proc/<pid>/environ`, and lets that answer win: `busy` renders `*`,
-`waiting`/`blocked` render `?`, `idle` renders nothing. The files still decide for every key the CLI
-doesn't cover, and take the tabs back entirely if the CLI can't be reached or parsed. The poll is
-skipped in a window with no terminals to decorate.
+`CCH_TAB_ID` via `/proc/<pid>/environ`, and lets `busy` win over whatever the file last wrote. The
+files still decide for every key the CLI doesn't cover, and take the tabs back entirely if the CLI
+can't be reached or parsed. The poll is skipped in a window with no terminals to decorate.
+
+**But the CLI only knows half of it, and `idle` does not mean "nothing to see".** It has no word for
+"this session asked you a question": one waiting at its prompt reports plain `idle`, exactly like one
+that finished quietly (measured across eleven live sessions — `waiting`/`blocked` only ever appeared
+on background rows). 0.35.0 let that `idle` overwrite the file, which silently stripped the `?` off
+every tab that was waiting for an answer and left the tab bar looking dead. So since 0.35.1: `busy`
+wins outright, and `idle` clears a stale `working` but never an `input`.
 
 **This needs hooks registered in `~/.claude/settings.json` — the extension does not add them.**
 Add:

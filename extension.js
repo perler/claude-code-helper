@@ -2569,8 +2569,9 @@ function tabStateCwdKey(terminal) {
 // self-heal — had nothing to fire on inside a long wait loop.
 //
 // `claude agents --json` knows the real state of every session at any moment,
-// so it is asked first and the files answer only for keys it does not cover.
-// Same order the Agent Sessions tree already uses (see agentStatus()).
+// so it is asked first — but only for the half it actually knows; see
+// tabStateBadgeState() for how the two sources are combined and why the CLI is
+// not simply allowed to overwrite the file.
 //
 // It is polled ASYNCHRONOUSLY into this cache and never called from
 // provideFileDecoration: the CLI measures ~470ms here, and a synchronous call on
@@ -2590,6 +2591,26 @@ function tabStateWordForAgentStatus(s) {
   if (s === 'waiting' || s === 'blocked') return 'input';
   if (s === 'idle') return 'idle';
   return null;
+}
+
+// What a tab actually renders, from the two sources that each know half of it.
+//
+// The CLI knows, at any moment, whether the session's process is BUSY — which
+// the event-driven files cannot. The files know why a session stopped: `input`
+// means it asked you something, and the CLI has no word for that at all. A
+// session sitting at its prompt with an unanswered question reports plain
+// `idle`, exactly like one that finished quietly and wants nothing (measured
+// 2026-08-26 across eleven live sessions: every waiting interactive one said
+// `idle`; `waiting`/`blocked` only ever appeared on background rows).
+//
+// So `busy` wins over whatever a file last wrote, and `idle` clears a stale
+// `working` — but `idle` must NEVER clear an `input`, or every tab waiting on
+// an answer silently loses its '?'. Letting it do exactly that is what emptied
+// the tab bar in 0.35.0, which is why this is a function and not an override.
+function tabStateBadgeState(cli, file) {
+  if (!cli) return file;                       // no CLI opinion on this key — the file decides
+  if (cli === 'working' || cli === 'input') return cli;
+  return file === 'input' ? 'input' : cli;     // cli === 'idle': keeps a question, drops stale work
 }
 
 // The tab id of a running session, read off the claude process the CLI names.
@@ -2684,22 +2705,21 @@ class TabStateDecorationProvider {
     if (!terminal) return undefined;
     const tabId = tabStateKeyForTerminal(terminal);
     if (!tabId) return undefined;
-    let state = tabStateAgentStates.get(tabId);
-    if (!state) {
-      try { state = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { return undefined; }
-    }
+    let file;
+    try { file = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { /* no file yet */ }
+    const state = tabStateBadgeState(tabStateAgentStates.get(tabId), file);
     if (state === 'input') return { badge: '?', color: new vscode.ThemeColor('list.warningForeground'), tooltip: 'Claude is waiting for your answer' };
     if (state === 'working') return { badge: '*', color: new vscode.ThemeColor('list.deemphasizedForeground'), tooltip: 'Claude is working' };
     return undefined; // idle, or a value we don't render — no decoration
   }
 }
 
-// Every key's EFFECTIVE state — the CLI's answer where it has one, the hook file
-// everywhere else — which is what a tab actually renders and therefore the only
-// thing worth diffing for a re-query.
+// Every key's EFFECTIVE state — the same combination the provider renders, and
+// therefore the only thing worth diffing for a re-query.
 function tabStateEffectiveAll() {
-  const out = tabStateReadAll();
-  for (const [k, v] of tabStateAgentStates) out.set(k, v);
+  const files = tabStateReadAll();
+  const out = new Map(files);
+  for (const [k, v] of tabStateAgentStates) out.set(k, tabStateBadgeState(v, files.get(k)));
   return out;
 }
 
