@@ -790,16 +790,15 @@ function launchClaudeDtach(fav, resumeArg, initialPrompt) {
   // plumbing, not something the user typed, so it shouldn't clutter their history.
   terminal.sendText(` ${steal}; ${sliceWrapShell()}dtach -n ${sock} bash ${JSON.stringify(runner)} 2>/dev/null; ${attach}`);
   registerSessionTerminal(id, terminal);
-  // Register unconditionally, including on a reattach (wasLive): when !wasLive,
-  // tabId genuinely is this terminal's shell's env, so registering it is exactly
-  // correct and is what the decoration provider's fast path will read for the
-  // rest of this window's life. When wasLive, tabId was never actually put into
-  // this terminal's env (see the opts.env gate above) — registering it anyway
-  // is a harmless no-op: the fast path returns an id no hook ever writes to, so
-  // it resolves to no decoration, exactly as if nothing were registered at all
-  // (falling through would hit the same terminal's own /proc/<pid>/environ,
-  // which — for the same reason — has nothing either).
-  registerTabState(terminal, tabId);
+  // Register ONLY when this terminal's env really carries tabId — i.e. when we
+  // just created the master. On a reattach it was never planted (see the
+  // opts.env gate above), and registering it anyway is NOT the harmless no-op
+  // an earlier comment here claimed: the registration is the FIRST thing
+  // tabStateKeyForTerminal() consults, so a dead id shadows the routes that
+  // would have worked and the tab can never be decorated again. That is exactly
+  // how a resumed session ended up with no badge at all. Left unregistered, it
+  // resolves through the dtach route instead.
+  if (!wasLive) registerTabState(terminal, tabId);
   return terminal;
 }
 
@@ -2476,6 +2475,7 @@ function tabStateTerminalClosed(t) {
   tabStateKeyByTerminal.delete(t);
   tabStatePidByTerminal.delete(t);
   tabStateEnvIdCache.delete(t);
+  tabStateDtachIdCache.delete(t);
   tabStateIdByTerminal.delete(t);
   // Deliberately NOT deleting the state file here. onDidCloseTerminal also fires
   // while the extension host tears down on a window reload, and at that moment a
@@ -2624,6 +2624,7 @@ function tabStateProcAlive(pid, procStart) {
 
 // The tab id of a running session, read off the claude process itself.
 function tabStateTabIdForPid(pid) {
+  if (typeof pid !== 'number') return null;
   if (tabStateTabIdByPid.has(pid)) return tabStateTabIdByPid.get(pid);
   let result = null;
   try {
@@ -2749,10 +2750,70 @@ function tabStateTrace(line) {
   } catch { /* tracing must never break a decoration */ }
 }
 
+// ─── a reattached session's terminal ────────────────────────────────────────
+//
+// A terminal that ATTACHES to a session which was already running gets no
+// CCH_TAB_ID: the session is already carrying the one it was born with, and
+// planting a second, fresh one in the attach terminal would just be an id
+// nothing ever writes to. So neither of the two routes above finds anything,
+// and the cwd fallback is refused whenever more than one session lives in the
+// folder — which is how a resumed session ends up permanently undecorated. That
+// is the tab Pat was watching all afternoon.
+//
+// What the attach client does carry is the session's socket path,
+// ~/.claude/dtach/<session-id>.sock, on its command line. And the CLI's session
+// file names the pid that IS that session, whose environ has the real tab id.
+// So: terminal -> its dtach child -> session id -> live pid -> CCH_TAB_ID.
+const tabStateDtachIdCache = new Map();   // vscode.Terminal -> CCH_TAB_ID | null
+
+// The session id off the `dtach -a` client running inside this terminal.
+function tabStateDtachSessionId(pid) {
+  let kids;
+  // /proc/<pid>/task/<pid>/children is a space-separated pid list. Absent on a
+  // kernel built without CONFIG_PROC_CHILDREN, in which case this route simply
+  // has no answer and the cwd fallback takes over, as before.
+  try { kids = fs.readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8').trim().split(/\s+/); } catch { return null; }
+  for (const kid of kids) {
+    if (!kid) continue;
+    let cmd;
+    try { cmd = fs.readFileSync(`/proc/${kid}/cmdline`, 'latin1'); } catch { continue; }
+    if (!cmd.includes('dtach')) continue;
+    const m = /([0-9a-f-]{36})\.sock/.exec(cmd);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// That session id's live pid, from the CLI's own session files.
+function tabStatePidForSessionId(sessionId) {
+  let files;
+  try { files = fs.readdirSync(tabStateSessionsDir()); } catch { return null; }
+  for (const f of files) {
+    if (!f.endsWith('.json')) continue;
+    let s;
+    try { s = JSON.parse(fs.readFileSync(path.join(tabStateSessionsDir(), f), 'utf8')); } catch { continue; }
+    if (s && s.sessionId === sessionId && typeof s.pid === 'number' && tabStateProcAlive(s.pid, s.procStart)) return s.pid;
+  }
+  return null;
+}
+
+function tabStateIdFromDtach(terminal) {
+  if (tabStateDtachIdCache.has(terminal)) return tabStateDtachIdCache.get(terminal);
+  const pid = tabStatePidByTerminal.get(terminal);
+  if (!pid) return null;                       // not resolved yet — retry next time, don't cache
+  const sessionId = tabStateDtachSessionId(pid);
+  const result = sessionId ? tabStateTabIdForPid(tabStatePidForSessionId(sessionId)) : null;
+  // Only cached once there was something to find: a session still starting up
+  // has no session file yet, and that must not harden into "this tab has no id".
+  if (result) tabStateDtachIdCache.set(terminal, result);
+  return result;
+}
+
 // The one place that decides which state file belongs to a terminal, so the
 // provider and the refresh below can never disagree about it.
 function tabStateKeyForTerminal(terminal) {
-  return tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal) || tabStateCwdKey(terminal) || null;
+  return tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal)
+      || tabStateIdFromDtach(terminal) || tabStateCwdKey(terminal) || null;
 }
 
 class TabStateDecorationProvider {

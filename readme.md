@@ -90,6 +90,15 @@ Set `"claudeHelper.tabStateTrace": true` to log what every tab computed to
 `~/.cache/claude-tab-state.exttrace` — key, live state, file state and the badge — for diagnosing a
 badge that looks wrong. Read live, so it needs no window reload.
 
+**A resumed session's tab.** A terminal that ATTACHES to an already-running session gets no
+`CCH_TAB_ID` — the session is already carrying the one it was born with. Neither the registration
+nor `/proc/<pid>/environ` finds anything for such a terminal, and the `cwd-` fallback is refused
+whenever more than one session lives in the folder, so a resumed session used to be permanently
+undecorated (and worse: the launcher registered a freshly-minted id nothing ever writes to, which
+*outranks* every route that would have worked). It is identified the long way round instead: the
+terminal's `dtach -a <session-id>.sock` child gives the session id, the CLI's session file turns
+that into the live pid, and that pid's environ has the real tab id.
+
 **Tests.** `node test/tab-state.test.js` drives the real provider out of `extension.js` against
 real state files and real processes (each fixture session is two actual processes carrying a
 `CCH_TAB_ID`, so `/proc/<pid>/environ` and the `procStart` check are exercised, not stubbed); only

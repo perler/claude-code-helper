@@ -1,3 +1,6 @@
 .playwright-mcp/**
+test/**
+.run-claude.sh
 *.vsix
+node_modules/**
 .git/**

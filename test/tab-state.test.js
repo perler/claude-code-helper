@@ -37,6 +37,7 @@ const settings = { tabStateDecorations: true, tabStateTrace: false };
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'cch-test-'));
 fs.mkdirSync(path.join(HOME, '.cache', 'claude-tab-state'), { recursive: true });
 fs.mkdirSync(path.join(HOME, '.claude', 'sessions'), { recursive: true });
+fs.mkdirSync(path.join(HOME, '.claude', 'dtach'), { recursive: true });
 const osStub = Object.assign(Object.create(os), { homedir: () => HOME });
 
 const src = fs.readFileSync(path.join(__dirname, '..', 'extension.js'), 'utf8');
@@ -61,13 +62,15 @@ function spawnWith(tabId, cwd) {
   children.push(child);
   return child.pid;
 }
+function stripTabId(env) { const e = { ...env }; delete e.CCH_TAB_ID; return e; }
 function startSession(status, cwd) {
   const tabId = crypto.randomUUID();
+  const sessionId = crypto.randomUUID();
   fs.mkdirSync(cwd, { recursive: true });
   const shellPid = spawnWith(tabId, cwd);
   const pid = spawnWith(tabId, cwd);
-  writeSession(pid, { pid, cwd, procStart: procStartOf(pid), status, sessionId: tabId, kind: 'interactive' });
-  return { tabId, pid, shellPid, cwd };
+  writeSession(pid, { pid, cwd, procStart: procStartOf(pid), status, sessionId, kind: 'interactive' });
+  return { tabId, pid, shellPid, cwd, sessionId };
 }
 function writeSession(pid, obj) {
   fs.writeFileSync(path.join(HOME, '.claude', 'sessions', `${pid}.json`), JSON.stringify(obj));
@@ -152,6 +155,28 @@ function is(actual, expected, what) {
   writeSession(dead.pid, { pid: dead.pid, cwd: dead.cwd, procStart: '999999999', status: 'busy', kind: 'interactive' });
   is(T.tabStateReadSessions().has(dead.tabId), false, 'a recycled pid cannot inherit a dead session (procStart)');
   is(badge(deadTab), '!', 'its tab falls back to what the hook last wrote, the terminal being alive');
+
+  console.log('\na REATTACHED session, whose terminal carries no CCH_TAB_ID');
+  // The real shape of a resumed session: the terminal's shell has no tab id of
+  // its own and only a `dtach -a <session-id>.sock` child to go on, while the
+  // claude process it attached to has carried the tab id since it was launched.
+  const resumed = startSession('busy', path.join(HOME, 'resumed'));
+  const sock = path.join(HOME, '.claude', 'dtach', `${resumed.sessionId}.sock`);
+  const attachShell = cp.spawn('bash', ['-c', `(exec -a "dtach -a ${sock}" sleep 120) & wait`],
+    { cwd: resumed.cwd, env: stripTabId(process.env), stdio: 'ignore' });
+  children.push(attachShell);
+  await new Promise((r) => setTimeout(r, 150));            // let bash fork the child
+  const tResumed = addTerminal(attachShell.pid, 'resumed');
+  await new Promise((r) => setTimeout(r, 50));
+  is(T.tabStateKeyForTerminal(tResumed.terminal), resumed.tabId, 'the tab id is found through the dtach socket');
+  hook(resumed.tabId, 'ended');
+  // The live read is memoised for a second, so a session that appeared inside
+  // that second is not in it yet; the 2s tick invalidates. Doing it by hand here
+  // asserts the steady state rather than the one-tick transient.
+  T.tabStateRefresh();
+  is(badge(tResumed), '*', 'so a resumed session that is working shows the dot');
+  setStatus(resumed, 'idle'); T.tabStateRefresh();
+  is(badge(tResumed), '!', 'and its finished turn is marked, instead of nothing at all');
 
   console.log('\nthe words themselves');
   for (const [live, file, want, what] of [
