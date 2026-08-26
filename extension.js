@@ -293,6 +293,16 @@ function _readSessionMetaUncached(file, size) {
     if (!line) continue;
     let rec; try { rec = JSON.parse(line); } catch { continue; }
     if (rec.type === 'ai-title' && rec.aiTitle) aiTitle = rec.aiTitle;
+    // A bridge session opens with custom-title, agent-name and queue-operation
+    // records — one of them 10 kB on its own — so the first record carrying `cwd`
+    // can sit past the 16 kB head window. The only fallback then is decoding the
+    // project folder name, which is ambiguous the moment a directory has a dash
+    // in it (`-home-work-clients-EEB-ingest-hetzner-plann` decodes to
+    // `/home/work/clients/EEB/ingest/hetzner/plann`), so clicking such a session
+    // could only answer "Can't determine working directory" — a live, healthy
+    // session made unattachable by where a record happened to land in the file.
+    // The tail is already in memory; take the cwd from there when the head had none.
+    if (!cwd && typeof rec.cwd === 'string') cwd = rec.cwd;
     // Track the newest real conversation event time. fs mtime is unreliable for
     // "last activity": a long-lived idle session keeps getting its transcript
     // rewritten (checkpoint flush — same content), which bumps mtime to "now"
