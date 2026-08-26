@@ -2350,6 +2350,9 @@ const tabStateTerminalsById = new Map();  // instanceId -> vscode.Terminal
 const tabStateIdByTerminal = new Map();   // vscode.Terminal -> CCH_TAB_ID uuid (this window minted it)
 const tabStatePidByTerminal = new Map();  // vscode.Terminal -> pid, once terminal.processId resolves
 const tabStateEnvIdCache = new Map();     // vscode.Terminal -> CCH_TAB_ID uuid | null, read from /proc once
+const tabStateUriByInstanceId = new Map();// instanceId -> the vscode-terminal: URI VS Code asked us about
+const tabStateKeyByTerminal = new Map();  // vscode.Terminal -> state-file key last resolved for it (or null)
+let tabStateLastStates = new Map();       // state-file name -> its content, as of the last refresh
 let tabStateProvider;
 
 function tabStateDecorationsEnabled() { return cfg().get('tabStateDecorations') !== false; }
@@ -2375,8 +2378,10 @@ function tabStateTerminalClosed(t) {
   for (const [instanceId, term] of tabStateTerminalsById) {
     if (term !== t) continue;
     tabStateTerminalsById.delete(instanceId);
+    tabStateUriByInstanceId.delete(instanceId);
     break;
   }
+  tabStateKeyByTerminal.delete(t);
   tabStatePidByTerminal.delete(t);
   tabStateEnvIdCache.delete(t);
   tabStateIdByTerminal.delete(t);
@@ -2471,19 +2476,29 @@ function tabStateCwdKey(terminal) {
   return 'cwd-' + crypto.createHash('sha1').update(cwd).digest('hex');
 }
 
+// The one place that decides which state file belongs to a terminal, so the
+// provider and the refresh below can never disagree about it.
+function tabStateKeyForTerminal(terminal) {
+  return tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal) || tabStateCwdKey(terminal) || null;
+}
+
 class TabStateDecorationProvider {
   constructor() {
     this._em = new vscode.EventEmitter();
     this.onDidChangeFileDecorations = this._em.event;
   }
-  fireAll() { this._em.fire(undefined); } // undefined = re-query every known resource
+  // Named URIs only — NEVER fire(undefined). See tabStateRefresh() for why.
+  fireFor(uris) { this._em.fire(uris); }
   provideFileDecoration(uri) {
     if (!tabStateDecorationsEnabled() || uri.scheme !== 'vscode-terminal') return undefined;
     const m = /\/(\d+)$/.exec(uri.path);
     if (!m) return undefined;
+    // Remember the exact URI VS Code uses for this tab: a targeted re-query can
+    // only name URIs, and there is no public API to build one.
+    tabStateUriByInstanceId.set(Number(m[1]), uri);
     const terminal = tabStateTerminalsById.get(Number(m[1]));
     if (!terminal) return undefined;
-    const tabId = tabStateIdByTerminal.get(terminal) || tabStateIdFromEnviron(terminal) || tabStateCwdKey(terminal);
+    const tabId = tabStateKeyForTerminal(terminal);
     if (!tabId) return undefined;
     let state;
     try { state = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { return undefined; }
@@ -2493,12 +2508,65 @@ class TabStateDecorationProvider {
   }
 }
 
+// Read the state directory as name -> state word. Contents, not mtimes: the
+// PreToolUse hook rewrites `working` over `working` on every single tool call,
+// so mtime changes constantly while nothing a tab renders has changed.
+function tabStateReadAll() {
+  const dir = tabStateDir();
+  const out = new Map();
+  let files;
+  try { files = fs.readdirSync(dir); } catch { return out; }
+  for (const f of files) {
+    try { out.set(f, fs.readFileSync(path.join(dir, f), 'utf8').trim()); } catch { /* vanished mid-read */ }
+  }
+  return out;
+}
+
+// Re-query only the tabs whose state actually changed.
+//
+// 🚨 Do not go back to firing `undefined` ("re-query everything"). VS Code
+// answers that by DELETING every cached decoration and immediately emitting a
+// change for all of them; the re-query then goes to the extension host over
+// RPC, which is asynchronous, so every tab renders one frame with no badge
+// before the answer arrives. With a hook write landing on most tool calls of
+// every running session, that read as the whole tab bar flickering several
+// times a second (reported live 2026-08-26, with a screen recording). A fire
+// naming specific URIs takes a different path in VS Code: it refetches first
+// and only emits once the value is in, so the tab changes without blanking.
+//
+// Cheap enough to run on every event: a readdir plus a read of a handful of
+// tiny files, and it fires nothing at all when no state word moved.
+let tabStateWatchDebounce;
+function tabStateRefresh() {
+  if (!tabStateProvider) return;
+  const now = tabStateReadAll();
+  const changed = new Set();
+  for (const [k, v] of now) if (tabStateLastStates.get(k) !== v) changed.add(k);
+  for (const k of tabStateLastStates.keys()) if (!now.has(k)) changed.add(k);
+  tabStateLastStates = now;
+
+  const uris = new Map();
+  for (const [instanceId, term] of tabStateTerminalsById) {
+    const key = tabStateKeyForTerminal(term);
+    const prev = tabStateKeyByTerminal.get(term);
+    // Either this tab's state word moved, or the tab only just became
+    // identifiable (its pid resolved, a sibling in the same cwd closed).
+    const affected = prev !== key || (key && changed.has(key));
+    tabStateKeyByTerminal.set(term, key);
+    if (!affected) continue;
+    const uri = tabStateUriByInstanceId.get(instanceId);
+    // No URI yet means VS Code has never asked about this tab, so it has no
+    // decoration to correct — it will ask when it first renders.
+    if (uri) uris.set(uri.toString(), uri);
+  }
+  if (uris.size) tabStateProvider.fireFor([...uris.values()]);
+}
+
 // Debounced so a burst of hook writes (a busy session flipping working/idle/working)
 // triggers one re-query, not one per file event.
-let tabStateWatchDebounce;
 function tabStateChanged() {
   clearTimeout(tabStateWatchDebounce);
-  tabStateWatchDebounce = setTimeout(() => { if (tabStateProvider) tabStateProvider.fireAll(); }, 150);
+  tabStateWatchDebounce = setTimeout(tabStateRefresh, 150);
 }
 
 // Required: without a change event, an already-open tab is never re-queried after
@@ -2514,21 +2582,10 @@ function startTabStateWatcher(context) {
   // fs.watch alone is not enough: observed live, a session's file went input ->
   // working while its tab kept showing the stale "?" for hours, because no change
   // event ever reached the provider. A badge that lies is worse than no badge, so
-  // poll the directory as well and fire whenever the snapshot differs. Cost is a
-  // readdir plus a stat per file every two seconds, over a handful of files.
-  let last = '';
-  const poll = setInterval(() => {
-    let now = '';
-    try {
-      for (const f of fs.readdirSync(dir).sort()) {
-        const st = fs.statSync(path.join(dir, f));
-        now += `${f}:${st.mtimeMs}:${st.size};`;
-      }
-    } catch { return; }
-    if (now === last) return;
-    last = now;
-    tabStateChanged();
-  }, 2000);
+  // poll the directory as well. tabStateRefresh() compares state words and fires
+  // nothing when none moved, so a tick that finds no change costs a readdir plus
+  // a read of a handful of tiny files.
+  const poll = setInterval(tabStateChanged, 2000);
   context.subscriptions.push({ dispose: () => clearInterval(poll) });
 }
 
