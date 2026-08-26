@@ -2673,17 +2673,59 @@ function tabStateLive() {
 
 // What a tab actually renders, from the two sources that each know half of it.
 //
-// The session file knows, at any moment, whether the session is doing something
+// The session file knows, at any moment, whether the session is DOING something
 // — which the event-driven hook files cannot. The hook files know why a session
-// stopped: `input` means the session asked you something. So a live `working`
-// wins over whatever the file last wrote, and `idle` clears a stale `working` —
-// but `idle` must NEVER clear an `input`, or every tab waiting on an answer
-// silently loses its '?'. Letting it do exactly that is what emptied the tab bar
-// in 0.35.0.
+// stopped: `ended` is a finished turn, `input` is a real prompt. So a live
+// `working` wins over whatever the file last wrote, and a live `idle` clears a
+// stale `working` — but it must NEVER clear `ended` or `input`, which are the
+// two states a stopped session can be in and the only ones the CLI cannot tell
+// apart (it reports both as plain `idle`). Letting it do that is what emptied
+// the tab bar in 0.35.0.
 function tabStateBadgeState(live, file) {
   if (!live) return file;                        // no live opinion on this key — the file decides
   if (live === 'working' || live === 'input') return live;
-  return file === 'input' ? 'input' : live;      // live === 'idle': keeps a question, drops stale work
+  return (file === 'input' || file === 'ended') ? file : live;   // live === 'idle'
+}
+
+// ─── which finished turns you have already looked at ────────────────────────
+//
+// `ended` means the turn is over and nobody has read it. That is worth a badge
+// exactly until you look, so the mark is cleared by FOCUS, which is the one
+// part of this only the extension can see: the tab you are sitting on is being
+// read by definition, and the moment you leave it, anything the session does
+// afterwards is unread again.
+//
+// Deliberately not persisted. After a window reload every finished turn is
+// unread again, which is the safe direction — a badge you have already dealt
+// with costs a glance, a missing one costs the session.
+const tabStateSeen = new Set();   // state-file key -> you have looked since it ended
+
+// The active terminal is being read right now, so it stays marked as seen for as
+// long as it is focused — otherwise a turn that ends while you watch it would
+// put a '!' on the very tab you are looking at. Only while the WINDOW has focus:
+// with the editor in the background, whatever finishes is genuinely unread.
+function tabStateMarkActiveSeen() {
+  if (!vscode.window.state.focused) return;
+  const t = vscode.window.activeTerminal;
+  if (!t) return;
+  const key = tabStateKeyForTerminal(t);
+  if (key) tabStateSeen.add(key);
+}
+
+// Focusing a tab has to re-query that tab: its state word has not changed, so
+// the ordinary diff in tabStateRefresh() would fire nothing and the '!' would
+// stay on screen until something else moved.
+function tabStateTerminalFocused(t) {
+  if (!t) return;
+  const key = tabStateKeyForTerminal(t);
+  if (!key || tabStateSeen.has(key)) return;
+  tabStateSeen.add(key);
+  for (const [instanceId, term] of tabStateTerminalsById) {
+    if (term !== t) continue;
+    const uri = tabStateUriByInstanceId.get(instanceId);
+    if (uri && tabStateProvider) tabStateProvider.fireFor([uri]);
+    break;
+  }
 }
 
 // Opt-in trace of what every tab computed, for diagnosing a badge that looks
@@ -2724,11 +2766,14 @@ class TabStateDecorationProvider {
     let file;
     try { file = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { /* no file yet */ }
     const live = tabStateLive().get(tabId);
-    const state = tabStateBadgeState(live, file);
+    let state = tabStateBadgeState(live, file);
+    // A finished turn you have already looked at renders nothing at all.
+    if (state === 'ended' && (tabStateSeen.has(tabId) || terminal === vscode.window.activeTerminal)) state = 'read';
     tabStateTrace(`decorate ${uri.path} name=${terminal.name} key=${tabId.slice(0, 8)} live=${live || '-'} file=${file || '-'} -> ${state || 'none'}`);
-    if (state === 'input') return { badge: '?', color: new vscode.ThemeColor('list.warningForeground'), tooltip: 'Claude is waiting for your answer' };
+    if (state === 'input') return { badge: '?', color: new vscode.ThemeColor('list.warningForeground'), tooltip: 'Claude is asking you something' };
     if (state === 'working') return { badge: '*', color: new vscode.ThemeColor('list.deemphasizedForeground'), tooltip: 'Claude is working' };
-    return undefined; // idle, or a value we don't render — no decoration
+    if (state === 'ended') return { badge: '!', color: new vscode.ThemeColor('list.warningForeground'), tooltip: 'Claude finished — you have not looked yet' };
+    return undefined; // idle, read, or a value we don't render — no decoration
   }
 }
 
@@ -2775,7 +2820,14 @@ function tabStateRefresh() {
   tabStateLiveCacheAt = 0;   // the tick that diffs is the tick that refreshes the live read
   const now = tabStateEffectiveAll();
   const changed = new Set();
-  for (const [k, v] of now) if (tabStateLastStates.get(k) !== v) changed.add(k);
+  for (const [k, v] of now) {
+    if (tabStateLastStates.get(k) === v) continue;
+    // A turn that just ended is unread by definition, even on a tab you read a
+    // moment ago — that is the whole point of clearing the mark by focus.
+    if (v === 'ended') tabStateSeen.delete(k);
+    changed.add(k);
+  }
+  tabStateMarkActiveSeen();
   for (const k of tabStateLastStates.keys()) if (!now.has(k)) changed.add(k);
   tabStateLastStates = now;
 
@@ -3929,7 +3981,8 @@ function activate(context) {
   context.subscriptions.push(vscode.window.registerFileDecorationProvider(tabStateProvider));
   context.subscriptions.push(
     vscode.window.onDidOpenTerminal((t) => tabStateTerminalOpened(t)),
-    vscode.window.onDidCloseTerminal((t) => tabStateTerminalClosed(t))
+    vscode.window.onDidCloseTerminal((t) => tabStateTerminalClosed(t)),
+    vscode.window.onDidChangeActiveTerminal((t) => tabStateTerminalFocused(t))
   );
   startTabStateWatcher(context);
   setTimeout(tabStateSweepStale, 5000);

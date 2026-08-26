@@ -5,6 +5,17 @@
 #
 # Usage: tab-state.sh working|input|idle|delete
 #
+# The words this writes are not quite the words the hooks pass in:
+#
+#   working   a turn is running                                  -> '*'
+#   ended     the turn finished and you have not looked yet       -> '!'
+#   input     the session is ASKING something (a real prompt)     -> '?'
+#
+# `idle` from the Stop hook IS "the turn ended", so it is written as `ended`;
+# the extension is what decides you have seen it (it clears the badge when you
+# focus that tab). Keeping the mapping here rather than in settings.json means
+# every already-running session picks it up without a restart.
+#
 # See readme.md "Tab state decorations" for the settings.json hook block and
 # the event -> argument mapping.
 #
@@ -44,12 +55,21 @@ fi
 
 [ ${#keys[@]} -gt 0 ] || exit 0
 
-# The Notification event covers two unrelated things: a real permission prompt,
-# and a "no new message for 60s" nudge (notificationType idle_prompt). The nudge
-# also fires MID-TURN, during a long tool call — so writing `input` on every
-# notification marks a busy session as waiting for you, and it stays that way
-# until the turn ends. Observed live: a working session showed "?" for hours.
-# So an idle nudge may only assert `input` when the turn is not running.
+# The Stop hook says "this turn is over", which is exactly the state the badge
+# calls `ended` — not `idle`. Nothing writes `idle` any more; a tab goes quiet
+# when you LOOK at it, which only the extension can know.
+[ "$state" = "idle" ] && state="ended"
+
+# The Notification event covers two unrelated things: a real prompt — a
+# permission request, something the session is actually asking — and a "no new
+# message for 60s" nudge (notificationType idle_prompt). Only the first is a
+# question, and conflating them is what put a "?" on tabs that were asking
+# nothing (2026-08-26).
+#
+# The nudge also fires MID-TURN, during a long tool call, so it may never
+# overwrite a running turn: a busy session that collects one would otherwise sit
+# on the wrong badge until the turn ends. Observed live: a working session showed
+# "?" for hours.
 if [ "$state" = "input" ]; then
   payload=$(timeout 1 cat 2>/dev/null || true)
   [ -n "${CCH_TAB_TRACE:-}" ] && printf '%s\n' "$(date +%H:%M:%S) state=$state id=${CCH_TAB_ID:-none} payload=$payload" >> "$HOME/.cache/claude-tab-state.trace" 2>/dev/null
@@ -57,6 +77,8 @@ if [ "$state" = "input" ]; then
     *"waiting for your input"*|*idle_prompt*)
       current=$(cat "$dir/${keys[0]}" 2>/dev/null || true)
       [ "$current" = "working" ] && exit 0
+      # Not a question, just silence: the turn is over and unread.
+      state="ended"
       ;;
   esac
 fi
@@ -70,7 +92,7 @@ for key in "${keys[@]}"; do
     continue
   fi
   case "$state" in
-    working|input|idle) printf '%s' "$state" > "$file" 2>/dev/null ;;
+    working|input|ended|idle) printf '%s' "$state" > "$file" 2>/dev/null ;;
   esac
 done
 

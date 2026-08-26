@@ -38,9 +38,23 @@ highlighted row. Uses `fd` (or
 
 ## Tab state decorations
 
-A badge and colour on a Claude session's terminal editor tab — `*` (dimmed) while it's working,
-`?` (warning colour) while it's waiting for your answer, nothing while idle. No change to the
-tab's title or icon.
+A badge and colour on a Claude session's terminal editor tab. No change to the tab's title or icon.
+
+| Badge | Means |
+|---|---|
+| `*` dimmed | a turn is running — including one parked in a `run_in_background` shell |
+| `!` warning | the turn finished and **you have not looked yet** |
+| `?` warning | the session is **asking** something — a permission prompt, a real question |
+| none | idle, or a finished turn you have already read |
+
+`!` is cleared by looking: focusing that tab drops it, and the tab you are sitting on never grows
+one while the window has focus. The mark is not persisted — after a window reload every finished
+turn counts as unread again, which is the safe direction.
+
+The three words matter because Claude Code's `Notification` event covers two unrelated things: a
+real prompt, and a "no new message for 60 s" nudge that fires after *every* turn. Treating both as
+`?` put question marks on tabs that were asking nothing (reported 2026-08-26), so the nudge — and
+the `Stop` hook — write `ended` instead, and only a genuine notification writes `input`.
 
 The extension generates a `CCH_TAB_ID` uuid per launched session and puts it in that session's
 environment. A hook script, `hooks/tab-state.sh` in this repo, reads it back and writes one word
