@@ -1425,6 +1425,64 @@ function askApi(prompt, key, system) {
   });
 }
 
+// ── the mail the entry points at ─────────────────────────────────────────────
+//
+// "email Cloudflare" is not a two-word subject, it is a pointer to a message sitting in
+// the inbox — and everything that decides the destination (who sent it, which client
+// they are) is in that message, not in the two words. Without dereferencing it the
+// model is shown "Cloudflare" and a client list and routes it to nothing, correctly.
+// The lookup reads the mailbox over IMAP (read-only) and maps the sender through
+// client-emails.json, the same table that files a labelled mail into its project.
+function mailLookupCommand() { return expandHome((cfg().get('mailLookupCommand') || '').trim()); }
+
+function isMailEntry(q) { return /^email\s+\S/i.test(String(q || '').trim()); }
+
+function findMail(question) {
+  return new Promise((resolve) => {
+    const cmd = mailLookupCommand();
+    const subject = asanaTaskQuery(question);
+    if (!cmd || !isMailEntry(question) || subject.length < 3) return resolve(null);
+    const tokens = cmd.split(/\s+/);
+    let child;
+    try {
+      child = cp.execFile(
+        tokens[0], [...tokens.slice(1), subject],
+        // Gmail's IMAP login + SELECT alone swings between 4 and 10s from here (measured
+        // 2026-08-26); a timeout that sometimes drops the answer is worse than the wait.
+        { timeout: 25000, maxBuffer: 1 << 20 },
+        (err, stdout) => {
+          if (err) return resolve(null);
+          let m; try { m = JSON.parse(String(stdout || '')); } catch { return resolve(null); }
+          resolve(m && m.subject ? m : null);
+        }
+      );
+    } catch { return resolve(null); }
+    child.on('error', () => resolve(null));
+  });
+}
+
+// The client the mail's sender belongs to, as a routing target. A house code (EEB) has
+// several projects and no single "client:" entry, so only real clients resolve here;
+// the model still sees the sender and decides the rest.
+function mailTarget(mail, targets) {
+  const code = mail && mail.client ? String(mail.client).toUpperCase() : '';
+  if (!code) return null;
+  return targets.find((t) => t.id.toUpperCase() === `CLIENT:${code}`) || null;
+}
+
+function mailContext(mail) {
+  if (!mail) return [];
+  return [
+    'The entry points at this mail in the inbox:',
+    `From: ${mail.from}`,
+    `Subject: ${mail.subject}`,
+    `Date: ${mail.date}`,
+    ...(mail.client ? [`Sender belongs to client: ${mail.client}`] : []),
+    ...(mail.snippet ? [`Excerpt: ${mail.snippet}`] : []),
+    '',
+  ];
+}
+
 // cwd is a temp dir so the call doesn't drag in a project's CLAUDE.md, and MCP servers,
 // hooks and tools stay unloaded — this classifies one line of text and has no use for
 // any of them (worth ~2.5s of the CLI's boot, measured).
@@ -1457,20 +1515,30 @@ async function generateSessionPlan(question) {
   const routeSystem = 'You route a short work note to one destination from a fixed list. '
     + 'You reply with exactly one JSON object and nothing else. Ids are copied character-for-character '
     + 'from the list you were given; you never invent one, and you answer "none" rather than guess.';
+  // The mail comes first, not alongside: its sender is what the routing call needs to
+  // see, so for an "email" entry the ~1s IMAP round trip is on the critical path.
+  const mail = await findMail(question);
   const [routed, hit] = await Promise.all([
-    askModel(routingPrompt(question, targets), routeSystem),
+    askModel(routingPrompt(question, targets, mail), routeSystem),
     findAsanaTask(question, targets),
   ]);
   const plan = parseSessionPlan(routed, targets);
   // An entry that names a task we hold is not a classification problem — the project
   // it is filed in is the answer, so it outranks whatever the model decided.
   if (hit) { plan.target = hit.target; plan.task = hit.task; }
+  // Likewise a mail whose sender is a known client: the registry says where it goes.
+  if (mail) {
+    plan.kind = 'email';
+    plan.mail = mail;
+    const t = mailTarget(mail, targets);
+    if (t) plan.target = t;
+  }
   plan.slug = plan.slug || timestampName();
   plan.existing = await findExistingFolder(question, plan);
   return plan;
 }
 
-function routingPrompt(question, targets) {
+function routingPrompt(question, targets, mail) {
   {
     // Clients get a line each — the company name is what makes an opaque shortcode
     // matchable. Repos are just names, on one line: spelling out "local dev project"
@@ -1481,6 +1549,7 @@ function routingPrompt(question, targets) {
       'Route one entry from a "New Task" box.',
       '',
       'Entry:', question, '',
+      ...mailContext(mail),
       'Clients and house projects — "<id> — <Asana project> — <client or subject>":',
       ...homes.map((t) => `${t.id} — ${t.name} — ${t.desc}`),
       '',
@@ -1669,7 +1738,7 @@ const KIND_LABEL = { asana: 'Asana task', email: 'Email', session: 'Session' };
 // Turn the raw entry into the session's first prompt. A "session" entry is passed
 // through untouched — it already says what it wants. The other two are the typing the
 // box exists to save: the verb and the destination are stated here instead.
-function decoratePrompt(q, kind, target, task) {
+function decoratePrompt(q, kind, target, task, mail) {
   if (kind === 'asana') {
     // The search the cold instruction below asks for has already been done, by name and
     // exactly: this IS that task. Saying so is what stops the sixth copy of it.
@@ -1691,6 +1760,17 @@ function decoratePrompt(q, kind, target, task) {
   }
   if (kind === 'email') {
     const about = target ? ` It concerns ${target.desc || target.name}.` : '';
+    if (mail) {
+      return [
+        `Reply to this mail with the email-writing skill, then show the draft and wait for approval — nothing is sent unprompted.${about}`,
+        'Read the full thread first (Gmail MCP, or the link below) and answer what it actually asks.',
+        `From: ${mail.from}`,
+        `Subject: ${mail.subject}`,
+        `Date: ${mail.date}`,
+        ...(mail.thread_link ? [mail.thread_link] : []),
+        '', 'Note:', q,
+      ].join('\n');
+    }
     return [
       `Draft this email with the email-writing skill, then show it and wait for approval — nothing is sent unprompted.${about}`,
       '', 'Mail:', q,
@@ -1741,12 +1821,14 @@ async function askClaudeSession(question, io) {
   let target = plan.target || scratchTarget(slug);
   let existing = plan.existing;
   let task = plan.task || null;
+  const mail = plan.mail || null;
 
   for (;;) {
     const reply = await io.propose({
       kind,
       kindLabel: KIND_LABEL[kind],
-      target: task ? `${target.name} — existing task` : target.name,
+      target: task ? `${target.name} — existing task`
+        : (mail && mail.from_address ? `${target.name} — mail from ${mail.from_address}` : target.name),
       dir: shortHome(existing || targetDir(target, slug)),
       existing: !!existing,
     });
@@ -1788,7 +1870,7 @@ async function askClaudeSession(question, io) {
   try {
     started = !!(await launchClaude(
       { path: dir, label: path.basename(dir) }, resume,
-      { skipNamePrompt: true, initialPrompt: resume ? q : decoratePrompt(q, kind, target, task) }
+      { skipNamePrompt: true, initialPrompt: resume ? q : decoratePrompt(q, kind, target, task, mail) }
     ));
   } finally {
     state('idle', !started);

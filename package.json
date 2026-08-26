@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.33.4",
+  "version": "0.34.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -929,6 +929,11 @@
           "type": "string",
           "default": "~/tools/asana/asana",
           "description": "Asana CLI used to list projects for New Task routing. The project list is cached in ~/.cache/claude-code-helper and refreshed in the background, so a submit never waits on it. Empty = no Asana routing (folders are then matched from client directories only)."
+        },
+        "claudeHelper.mailLookupCommand": {
+          "type": "string",
+          "default": "~/projects/infra/email-automation/bin/mail-lookup.py",
+          "description": "Script that resolves an `email <subject>` New Task entry to the actual inbox mail (sender, client, thread link), so the entry is routed to the sender's client and the session replies to the real thread. Prints JSON; empty = route on the typed words alone."
         },
         "claudeHelper.clientsDir": {
           "type": "string",
