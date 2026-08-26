@@ -48,6 +48,18 @@ to `~/.cache/claude-tab-state/$CCH_TAB_ID`; the extension watches that directory
 file's contents as the tab's decoration. A session started outside this extension has no
 `CCH_TAB_ID`, so the hook is a silent no-op for it — no crash, no stray file.
 
+**`claude agents --json` outranks those files.** The hooks are event-driven: each writes what was
+true at the instant an event fired, and nothing at all happens between events. A session that ends
+a turn, collects the 60-second "Claude is waiting for your input" nudge, and then goes back to work
+without making a tool call keeps the `input` that nudge wrote — the `PreToolUse` self-heal below has
+nothing to fire on. Seen live on 2026-08-26: a session sat on `?` for fourteen minutes while the CLI
+reported it `busy`. So the extension also polls the CLI every 4 seconds (asynchronously — the call
+measures ~470ms and must never run on the decoration path), maps each running session's pid to its
+`CCH_TAB_ID` via `/proc/<pid>/environ`, and lets that answer win: `busy` renders `*`,
+`waiting`/`blocked` render `?`, `idle` renders nothing. The files still decide for every key the CLI
+doesn't cover, and take the tabs back entirely if the CLI can't be reached or parsed. The poll is
+skipped in a window with no terminals to decorate.
+
 **This needs hooks registered in `~/.claude/settings.json` — the extension does not add them.**
 Add:
 

@@ -2558,6 +2558,108 @@ function tabStateCwdKey(terminal) {
   return 'cwd-' + crypto.createHash('sha1').update(cwd).digest('hex');
 }
 
+// ─── the state the CLI reports, which outranks the hook files ────────────────
+//
+// The hook files are event-driven: each records what was true at the instant an
+// event fired, and nothing happens between events. So a session that ends a
+// turn, gets the 60-second "Claude is waiting for your input" nudge, and then
+// goes back to work without making a tool call keeps the `input` that nudge
+// wrote. Observed live 2026-08-26: pid 736185 sat on "?" for fourteen minutes
+// while `claude agents --json` reported it `busy`, because PreToolUse — the
+// self-heal — had nothing to fire on inside a long wait loop.
+//
+// `claude agents --json` knows the real state of every session at any moment,
+// so it is asked first and the files answer only for keys it does not cover.
+// Same order the Agent Sessions tree already uses (see agentStatus()).
+//
+// It is polled ASYNCHRONOUSLY into this cache and never called from
+// provideFileDecoration: the CLI measures ~470ms here, and a synchronous call on
+// the decoration path — or on the 2s watcher tick — would block the extension
+// host for a quarter of every tick.
+let tabStateAgentStates = new Map();   // state-file key -> 'working' | 'input' | 'idle'
+const tabStateTabIdByPid = new Map();  // agent pid -> CCH_TAB_ID | null (a process's environ never changes)
+
+// The CLI's vocabulary collapsed onto the three words a badge renders:
+// interactive rows carry `status` (busy/idle/waiting/blocked), background ones
+// carry `state` (working/blocked/…). Anything else — a row with no status at
+// all, or a word added upstream later — is null, which means "no opinion", NOT
+// "idle": the hook file keeps the tab in that case rather than losing a badge
+// to a word we don't recognise.
+function tabStateWordForAgentStatus(s) {
+  if (s === 'busy' || s === 'working') return 'working';
+  if (s === 'waiting' || s === 'blocked') return 'input';
+  if (s === 'idle') return 'idle';
+  return null;
+}
+
+// The tab id of a running session, read off the claude process the CLI names.
+// Cached per pid and pruned each poll, so a reused pid can never inherit the
+// previous process's tab.
+function tabStateTabIdForPid(pid) {
+  if (tabStateTabIdByPid.has(pid)) return tabStateTabIdByPid.get(pid);
+  let result = null;
+  try {
+    for (const entry of fs.readFileSync(`/proc/${pid}/environ`, 'latin1').split('\0')) {
+      if (!entry.startsWith('CCH_TAB_ID=')) continue;
+      const v = entry.slice('CCH_TAB_ID='.length);
+      if (/^[0-9a-f-]{36}$/.test(v)) result = v;
+      break;
+    }
+  } catch { /* pid gone, or not ours — same as a session with no CCH_TAB_ID */ }
+  tabStateTabIdByPid.set(pid, result);
+  return result;
+}
+
+// One `claude agents --json` answer, turned into the same keys the hook writes.
+function tabStateAgentStatesFrom(list) {
+  const out = new Map();
+  const byCwd = new Map();     // cwd -> words, to spot the ambiguous case below
+  const seenPids = new Set();
+  for (const a of Array.isArray(list) ? list : []) {
+    const word = tabStateWordForAgentStatus(a.status || a.state);
+    if (typeof a.pid === 'number') {
+      seenPids.add(a.pid);
+      const tabId = word ? tabStateTabIdForPid(a.pid) : null;
+      if (tabId) out.set(tabId, word);
+    }
+    // Every row counts towards the cwd census, including ones we have no word
+    // for — a second session in the folder makes the key ambiguous whatever
+    // state it is in.
+    if (a.cwd) byCwd.set(a.cwd, (byCwd.get(a.cwd) || []).concat(word));
+  }
+  for (const pid of [...tabStateTabIdByPid.keys()]) if (!seenPids.has(pid)) tabStateTabIdByPid.delete(pid);
+  // A cwd key is an identity only while exactly ONE session lives in that
+  // directory; with two it cannot say which one a tab is showing. Same rule
+  // tabStateCwdKey() applies from the terminal side.
+  for (const [cwd, words] of byCwd) {
+    if (words.length !== 1 || !words[0]) continue;
+    out.set('cwd-' + crypto.createHash('sha1').update(cwd).digest('hex'), words[0]);
+  }
+  return out;
+}
+
+// Refresh that cache off the extension host thread. Gated on there being tabs to
+// decorate at all, so a window with no Claude terminals spawns nothing, and
+// re-entrancy-guarded so a slow answer cannot queue more spawns behind it.
+let tabStateAgentPollBusy = false;
+function tabStateAgentPoll() {
+  if (tabStateAgentPollBusy || !tabStateDecorationsEnabled() || !tabStateTerminalsById.size) return;
+  tabStateAgentPollBusy = true;
+  const bin = cfg().get('claudeCommand') || 'claude';
+  cp.execFile(bin, ['agents', '--json'], { encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024 },
+    (err, stdout) => {
+      tabStateAgentPollBusy = false;
+      let next = new Map();
+      // A CLI we could not reach or parse has no opinion, so the files take the
+      // tabs back rather than the last answer hardening into a badge that lies.
+      if (!err) { try { next = tabStateAgentStatesFrom(JSON.parse(stdout)); } catch { next = new Map(); } }
+      let changed = next.size !== tabStateAgentStates.size;
+      if (!changed) for (const [k, v] of next) if (tabStateAgentStates.get(k) !== v) { changed = true; break; }
+      tabStateAgentStates = next;
+      if (changed) tabStateChanged();
+    });
+}
+
 // The one place that decides which state file belongs to a terminal, so the
 // provider and the refresh below can never disagree about it.
 function tabStateKeyForTerminal(terminal) {
@@ -2582,12 +2684,23 @@ class TabStateDecorationProvider {
     if (!terminal) return undefined;
     const tabId = tabStateKeyForTerminal(terminal);
     if (!tabId) return undefined;
-    let state;
-    try { state = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { return undefined; }
+    let state = tabStateAgentStates.get(tabId);
+    if (!state) {
+      try { state = fs.readFileSync(path.join(tabStateDir(), tabId), 'utf8').trim(); } catch { return undefined; }
+    }
     if (state === 'input') return { badge: '?', color: new vscode.ThemeColor('list.warningForeground'), tooltip: 'Claude is waiting for your answer' };
     if (state === 'working') return { badge: '*', color: new vscode.ThemeColor('list.deemphasizedForeground'), tooltip: 'Claude is working' };
     return undefined; // idle, or a value we don't render — no decoration
   }
+}
+
+// Every key's EFFECTIVE state — the CLI's answer where it has one, the hook file
+// everywhere else — which is what a tab actually renders and therefore the only
+// thing worth diffing for a re-query.
+function tabStateEffectiveAll() {
+  const out = tabStateReadAll();
+  for (const [k, v] of tabStateAgentStates) out.set(k, v);
+  return out;
 }
 
 // Read the state directory as name -> state word. Contents, not mtimes: the
@@ -2621,7 +2734,7 @@ function tabStateReadAll() {
 let tabStateWatchDebounce;
 function tabStateRefresh() {
   if (!tabStateProvider) return;
-  const now = tabStateReadAll();
+  const now = tabStateEffectiveAll();
   const changed = new Set();
   for (const [k, v] of now) if (tabStateLastStates.get(k) !== v) changed.add(k);
   for (const k of tabStateLastStates.keys()) if (!now.has(k)) changed.add(k);
@@ -2669,6 +2782,12 @@ function startTabStateWatcher(context) {
   // a read of a handful of tiny files.
   const poll = setInterval(tabStateChanged, 2000);
   context.subscriptions.push({ dispose: () => clearInterval(poll) });
+
+  // And ask the CLI what those sessions are really doing, on its own slower
+  // cadence — it costs a process spawn, unlike the readdir above.
+  tabStateAgentPoll();
+  const agentPoll = setInterval(tabStateAgentPoll, 4000);
+  context.subscriptions.push({ dispose: () => clearInterval(agentPoll) });
 }
 
 // ─── recent sessions ─────────────────────────────────────────────────────────

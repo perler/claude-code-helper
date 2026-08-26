@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -75,13 +75,13 @@
     "commands": [
       {
         "command": "claudeHelper.newSession",
-        "title": "New Claude Session\u2026",
+        "title": "New Claude Session…",
         "icon": "$(rocket)",
         "category": "Claude Code Helper"
       },
       {
         "command": "claudeHelper.goToFolder",
-        "title": "Go to Folder\u2026",
+        "title": "Go to Folder…",
         "icon": "$(search)",
         "category": "Claude Code Helper"
       },
@@ -93,7 +93,7 @@
       },
       {
         "command": "claudeHelper.addFavourite",
-        "title": "Add Favourite\u2026",
+        "title": "Add Favourite…",
         "icon": "$(add)",
         "category": "Claude Code Helper"
       },
@@ -116,7 +116,7 @@
       },
       {
         "command": "claudeHelper.newFolderAndStartClaudeFromExplorer",
-        "title": "New Folder & Start Claude\u2026",
+        "title": "New Folder & Start Claude…",
         "icon": "$(new-folder)",
         "category": "Claude Code Helper"
       },
@@ -270,7 +270,7 @@
       },
       {
         "command": "claudeHelper.deleteSession",
-        "title": "Delete Session\u2026",
+        "title": "Delete Session…",
         "icon": "$(trash)",
         "category": "Claude Code Helper"
       },
@@ -335,13 +335,13 @@
       },
       {
         "command": "claudeHelper.addBookmark",
-        "title": "Add Bookmark\u2026",
+        "title": "Add Bookmark…",
         "icon": "$(add)",
         "category": "Claude Code Helper"
       },
       {
         "command": "claudeHelper.editBookmark",
-        "title": "Edit Bookmark\u2026",
+        "title": "Edit Bookmark…",
         "icon": "$(edit)",
         "category": "Claude Code Helper"
       },
@@ -806,12 +806,12 @@
             "~/hosting",
             "~/tasks"
           ],
-          "description": "Roots scanned by \"Go to Folder\u2026\" (Ctrl+Alt+P)."
+          "description": "Roots scanned by \"Go to Folder…\" (Ctrl+Alt+P)."
         },
         "claudeHelper.folderSearchDepth": {
           "type": "number",
           "default": 3,
-          "description": "How many levels below each root \"Go to Folder\u2026\" descends."
+          "description": "How many levels below each root \"Go to Folder…\" descends."
         },
         "claudeHelper.folderSearchExcludes": {
           "type": "array",
@@ -827,7 +827,7 @@
             "build",
             "__pycache__"
           ],
-          "description": "Directory names \"Go to Folder\u2026\" skips (and never descends into)."
+          "description": "Directory names \"Go to Folder…\" skips (and never descends into)."
         },
         "claudeHelper.folderSearchAction": {
           "type": "string",
@@ -848,7 +848,7 @@
             "Add it to Claude Favourites"
           ],
           "default": "reveal",
-          "description": "What Enter does in \"Go to Folder\u2026\". The other actions stay available as buttons on the highlighted row."
+          "description": "What Enter does in \"Go to Folder…\". The other actions stay available as buttons on the highlighted row."
         },
         "claudeHelper.confirmKillTerminal": {
           "type": "boolean",
@@ -878,7 +878,7 @@
         "claudeHelper.agentIndexPath": {
           "type": "string",
           "default": "~/.claude/agent-sessions.json",
-          "description": "Index file the Asana\u2192Claude bridge writes; powers the Agent Sessions view."
+          "description": "Index file the Asana→Claude bridge writes; powers the Agent Sessions view."
         },
         "claudeHelper.agentTmuxSocket": {
           "type": "string",
