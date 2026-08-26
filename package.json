@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.35.1",
+  "version": "0.36.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -949,6 +949,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show a badge on a Claude session's terminal editor tab for working / waiting for your answer / idle, driven by the tab-state.sh hook. See readme.md \"Tab state decorations\" for the required settings.json hook block."
+        },
+        "claudeHelper.tabStateTrace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log what each Claude terminal tab computed for its badge to ~/.cache/claude-tab-state.exttrace (diagnostics)."
         }
       }
     }

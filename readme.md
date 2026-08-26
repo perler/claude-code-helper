@@ -48,23 +48,33 @@ to `~/.cache/claude-tab-state/$CCH_TAB_ID`; the extension watches that directory
 file's contents as the tab's decoration. A session started outside this extension has no
 `CCH_TAB_ID`, so the hook is a silent no-op for it — no crash, no stray file.
 
-**`claude agents --json` outranks those files.** The hooks are event-driven: each writes what was
-true at the instant an event fired, and nothing at all happens between events. A session that ends
-a turn, collects the 60-second "Claude is waiting for your input" nudge, and then goes back to work
-without making a tool call keeps the `input` that nudge wrote — the `PreToolUse` self-heal below has
-nothing to fire on. Seen live on 2026-08-26: a session sat on `?` for fourteen minutes while the CLI
-reported it `busy`. So the extension also polls the CLI every 4 seconds (asynchronously — the call
-measures ~470ms and must never run on the decoration path), maps each running session's pid to its
-`CCH_TAB_ID` via `/proc/<pid>/environ`, and lets `busy` win over whatever the file last wrote. The
-files still decide for every key the CLI doesn't cover, and take the tabs back entirely if the CLI
-can't be reached or parsed. The poll is skipped in a window with no terminals to decorate.
+**The session's own live state outranks those files.** The hooks are event-driven: each writes what
+was true at the instant an event fired, and nothing at all happens between events. A session that
+ends a turn, collects the 60-second "Claude is waiting for your input" nudge and then goes back to
+work — or sits in a long `run_in_background` shell making no tool calls at all — keeps the `input`
+that nudge wrote, because the `PreToolUse` self-heal below has nothing to fire on. Seen live on
+2026-08-26: a session waiting on a background job showed `?` for minutes with nothing being asked.
 
-**But the CLI only knows half of it, and `idle` does not mean "nothing to see".** It has no word for
-"this session asked you a question": one waiting at its prompt reports plain `idle`, exactly like one
-that finished quietly (measured across eleven live sessions — `waiting`/`blocked` only ever appeared
-on background rows). 0.35.0 let that `idle` overwrite the file, which silently stripped the `?` off
-every tab that was waiting for an answer and left the tab bar looking dead. So since 0.35.1: `busy`
-wins outright, and `idle` clears a stale `working` but never an `input`.
+So the extension also reads `~/.claude/sessions/<pid>.json`, the CLI's own per-session state file
+(pid, cwd, procStart and a live `status`: `idle` / `busy` / `shell` / …) — the same thing
+`claude agents --json` reports from, minus the ~470ms subprocess, cheap enough to read on the
+decoration path. `procStart` is checked against field 22 of `/proc/<pid>/stat` so a recycled pid
+can't inherit a dead session's badge, and the pid maps to a tab through `CCH_TAB_ID` in
+`/proc/<pid>/environ`.
+
+The two sources each know half of it: the session file knows whether the session is *doing*
+something, the hook file knows *why* it stopped. `idle` is the only status that means idle —
+`busy`, `shell` and anything a later version adds render `*`. A live `working` wins over whatever
+the hook last wrote, and a live `idle` clears a stale `working` but **never** an `input`, or every
+tab waiting on an answer would silently lose its `?`. (0.35.0 polled `claude agents --json` into an
+async cache and let `idle` win outright — which stripped the `?` off every waiting tab, and left a
+tab painted before the first answer landed stuck on its stale badge. Both are why this reads files
+instead.) If the directory or its format ever changes, every read returns nothing and the hook files
+run the badges alone, as they did before.
+
+Set `"claudeHelper.tabStateTrace": true` to log what every tab computed to
+`~/.cache/claude-tab-state.exttrace` — key, live state, file state and the badge — for diagnosing a
+badge that looks wrong. Read live, so it needs no window reload.
 
 **This needs hooks registered in `~/.claude/settings.json` — the extension does not add them.**
 Add:
