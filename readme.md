@@ -90,6 +90,17 @@ Set `"claudeHelper.tabStateTrace": true` to log what every tab computed to
 `~/.cache/claude-tab-state.exttrace` — key, live state, file state and the badge — for diagnosing a
 badge that looks wrong. Read live, so it needs no window reload.
 
+**Tests.** `node test/tab-state.test.js` drives the real provider out of `extension.js` against
+real state files and real processes (each fixture session is two actual processes carrying a
+`CCH_TAB_ID`, so `/proc/<pid>/environ` and the `procStart` check are exercised, not stubbed); only
+the VS Code API is faked. `bash test/tab-state-hook.test.sh` covers which word each hook event
+writes. Run both after touching either side — every regression this feature has had was a wrong
+badge, not a crash, and a wrong badge is invisible to a syntax check.
+
+**A window that has not been reloaded still runs the extension it loaded.** These words are shared
+between the hook and the extension, so an old window renders nothing for a word it does not know —
+after upgrading, reload EVERY code-server window, not just the front one.
+
 **This needs hooks registered in `~/.claude/settings.json` — the extension does not add them.**
 Add:
 
