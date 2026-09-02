@@ -2382,6 +2382,17 @@ class AskViewProvider {
       else if (e.key === 'Escape') { e.preventDefault(); answer({ type: 'cancel' }); }
       return;
     }
+    // Escape with no proposal on screen throws the draft away. It reads as the
+    // second Escape: the first one dismisses a proposal and deliberately leaves
+    // the text alone, so pressing it again is how you say "and drop this too"
+    // when a different opening turns out to be the better one.
+    if (e.key === 'Escape') {
+      if (!q.value) return;
+      e.preventDefault();
+      q.value = '';
+      grow();
+      return;
+    }
     if (e.key !== 'Enter' || e.shiftKey) return;
     e.preventDefault();
     const text = q.value.trim();
