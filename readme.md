@@ -1,11 +1,51 @@
 # Claude Code Helper
 
-Sidebar with two views:
+A sidebar for running Claude Code out of VS Code / code-server. Six panels:
 
-1. **Favourites** — bookmark directories, start/resume Claude Code sessions with one click. Multi-session resume opens a picker.
-2. **Terminals** — list of open VS Code terminals with inline focus and right-click actions (reveal CWD, rename, split, kill).
+1. **New Task** — a text box that starts a session. It works out where the work belongs
+   (a client, a project, or a fresh scratch folder), names the session and opens it.
+2. **Favourites** — bookmarked directories; start or resume a session in one click.
+   Resuming a folder with several sessions opens a picker.
+3. **Running Sessions** — the open terminals, with focus and right-click actions
+   (reveal CWD, rename, split, kill).
+4. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
+   attach, resume and kill.
+5. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
+   with resume.
+6. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
 
 Replaces the standalone `claude-favourites` and `terminal-tree` extensions.
+
+**Two of those are only there when the machine has the pieces they need.** The Agent
+Sessions panel appears when the Asana CLI (`claudeHelper.asanaCommand`) is installed or
+the bridge's index/history file exists. The queue buttons under the New Task box, and
+the "Open Asana Task" context-menu items, appear when that CLI is installed. On a
+workstation without either, the Agent Sessions panel is gone, the New Task box keeps
+everything but its queue row, and nothing is spawned in the background. Everything else — favourites, terminals, recent sessions, bookmarks,
+Go to Folder, the tab badges — needs nothing beyond Claude Code itself.
+
+## Installing on another workstation
+
+```bash
+git clone https://github.com/perler/claude-code-helper.git
+cd claude-code-helper
+npm install -g @vscode/vsce      # once, if vsce is not already there
+vsce package
+code --install-extension claude-code-helper-*.vsix --force
+```
+
+Reload the window afterwards. Then set the paths that are specific to that machine —
+all of them optional, all under `claudeHelper` in settings:
+
+| Setting | What to point it at |
+|---|---|
+| `folderSearchRoots` | the directories **Go to Folder…** should scan |
+| `scratchDir` | where a nameless new session gets its folder |
+| `clientsDir` / `projectsDir` | the roots the New Task box offers as destinations |
+
+For the terminal-tab badges, add the hooks from "Tab state decorations" below. If you
+want the Asana panels there too, that needs the `asana` CLI and the bridge, which are
+not part of this repo.
 
 **Go to Folder… (`Ctrl+Alt+P`)** — Quick Open indexes files only, so there is no built-in way to
 jump to a folder by name. This command scans `claudeHelper.folderSearchRoots` for directories and
@@ -35,6 +75,35 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.folderSearchExcludes` | `node_modules .git venv .venv dist build __pycache__` | Directory names skipped |
 | `claudeHelper.folderSearchAction` | `reveal` | What Enter does in Go to Folder… |
 | `claudeHelper.tabStateDecorations` | `true` | Show working/waiting/idle badges on Claude terminal tabs (needs the hook below) |
+| `claudeHelper.tabStateTrace` | `false` | Log each tab's computed badge to `~/.cache/claude-tab-state.exttrace` |
+| `claudeHelper.sessionsMaxAgeDays` | `7` | Recent Sessions only lists sessions touched in the last N days |
+| `claudeHelper.sessionsMaxItems` | `100` | Cap on the Recent Sessions list |
+| `claudeHelper.scratchDir` | `~/tasks` | Base directory for a new, unnamed session |
+| `claudeHelper.autoRenameScratchSessions` | `true` | Rename a finished scratch folder to a slug of Claude's own session title |
+| `claudeHelper.useTmux` | `true` | Run sessions inside tmux, so they survive a reload and are reachable from Claude Mobile |
+| `claudeHelper.useDtach` | `true` | With `useTmux` off, run them inside dtach instead (this is what the tab badges need) |
+| `claudeHelper.dtachSocketDir` | `~/.claude/dtach` | Where the per-session dtach sockets live |
+| `claudeHelper.bookmarksFile` | `` | Bookmarks JSON; empty means `~/.config/cc-bookmarks.json` |
+| `claudeHelper.clientsDir` | `~/clients` | Root of client folders the New Task box can route to |
+| `claudeHelper.projectsDir` | `~/projects` | Root of project folders the New Task box can route to |
+| `claudeHelper.titleModel` | `claude-haiku-4-5-…` | Model that names a New Task session and picks its destination |
+| `claudeHelper.apiKeyFile` | `~/.env` | File read for `ANTHROPIC_API_KEY`; routing goes through the API (~1s) instead of the CLI (~9s) |
+| `claudeHelper.asanaCommand` | `~/tools/asana/asana` | Asana CLI. **Absent means the Asana panels and buttons are hidden.** |
+| `claudeHelper.agentIndexPath` | `~/.claude/agent-sessions.json` | Index the Asana→Claude bridge writes; feeds Agent Sessions |
+| `claudeHelper.agentTmuxSocket` | `claude` | tmux socket (`-L`) the bridge's sessions use |
+| `claudeHelper.mailLookupCommand` | (site-specific) | Resolves an `email <subject>` New Task entry to the actual mail |
+
+## The queue buttons under the New Task box
+
+Only present when the Asana CLI is installed. Each button walks one queue; the number on
+it is a count of what is in that queue right now.
+
+The counts are cached on disk (`~/.cache/claude-code-helper/queue-counts.json`) so the
+buttons paint instantly when a window opens, then refreshed behind that. While the panel
+is visible they refresh once a minute, and stop when it is not — the view is created with
+`retainContextWhenHidden`, so a sidebar left open on this container fires no visibility
+event and would otherwise sit on the count it read when the window loaded. The refresh
+button in the panel header forces a fetch, ignoring the two-minute cache window.
 
 ## Tab state decorations
 
@@ -111,25 +180,25 @@ between the hook and the extension, so an old window renders nothing for a word 
 after upgrading, reload EVERY code-server window, not just the front one.
 
 **This needs hooks registered in `~/.claude/settings.json` — the extension does not add them.**
-Add:
+Add the following, replacing `<repo>` with the path you cloned this repository to:
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh working" }] }
+      { "hooks": [{ "type": "command", "command": "bash <repo>/hooks/tab-state.sh working" }] }
     ],
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh input" }] }
+      { "hooks": [{ "type": "command", "command": "bash <repo>/hooks/tab-state.sh input" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh idle" }] }
+      { "hooks": [{ "type": "command", "command": "bash <repo>/hooks/tab-state.sh idle" }] }
     ],
     "SessionEnd": [
-      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh delete" }] }
+      { "hooks": [{ "type": "command", "command": "bash <repo>/hooks/tab-state.sh delete" }] }
     ],
     "PreToolUse": [
-      { "hooks": [{ "type": "command", "command": "bash /home/work/projects/claude-code-helper/hooks/tab-state.sh working" }] }
+      { "hooks": [{ "type": "command", "command": "bash <repo>/hooks/tab-state.sh working" }] }
     ]
   }
 }

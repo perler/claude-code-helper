@@ -1,8 +1,8 @@
 {
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
-  "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.42.0",
+  "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
+  "version": "0.42.1",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
