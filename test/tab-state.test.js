@@ -40,10 +40,10 @@ fs.mkdirSync(path.join(HOME, '.claude', 'sessions'), { recursive: true });
 fs.mkdirSync(path.join(HOME, '.claude', 'dtach'), { recursive: true });
 const osStub = Object.assign(Object.create(os), { homedir: () => HOME });
 
-const src = fs.readFileSync(path.join(__dirname, '..', 'extension.js'), 'utf8');
+const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'tabstate.js'), 'utf8');
 const from = src.indexOf('let tabStateTerminalCounter = 0;');
-const to = src.indexOf('// ─── recent sessions');
-if (from < 0 || to < 0) { console.error('could not find the tab-state block in extension.js'); process.exit(2); }
+const to = src.indexOf('// ─── end tab state');
+if (from < 0 || to < 0) { console.error('could not find the tab-state block in lib/tabstate.js'); process.exit(2); }
 const block = src.slice(from, to);
 const load = new Function('vscode', 'fs', 'path', 'os', 'crypto', 'cfg', `${block}
   return { TabStateDecorationProvider, tabStateSeedTerminals, tabStateTerminalOpened, tabStateTerminalFocused,

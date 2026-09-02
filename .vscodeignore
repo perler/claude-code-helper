@@ -4,3 +4,4 @@ test/**
 *.vsix
 node_modules/**
 .git/**
+HANDOFF.md
