@@ -3,11 +3,13 @@ const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
 
-const { agentIndexFile, agentSocket } = require('./lib/agent-index');
+const { agentIndexFile, agentSocket, hasAgentSessionSource } = require('./lib/agent-index');
 const {
   AgentSessionsProvider, attachAgentSession, removeAgentEntry, resumeAgentSession,
 } = require('./lib/agents');
-const { asanaTaskFor, openAsanaTask, refreshAsanaProjects } = require('./lib/asana');
+const {
+  asanaAvailable, asanaTaskFor, forgetAsanaAvailable, openAsanaTask, refreshAsanaProjects,
+} = require('./lib/asana');
 const {
   BookmarksProvider, addBookmark, setBookmarksProvider, editBookmark, ensureBookmarksFile, openBookmark, removeBookmark,
 } = require('./lib/bookmarks');
@@ -51,8 +53,21 @@ async function applyFastHoverOnce(context) {
   }
 }
 
+// What this workstation actually has. The extension runs on a client's machine too,
+// where there is no Asana CLI and no bridge, and everything that talks to either has
+// to be gone there rather than present and dead. `agentSessions` stays true on a box
+// that used to run the bridge, so its history remains readable after the CLI goes.
+function publishAvailability() {
+  const asana = asanaAvailable();
+  vscode.commands.executeCommand('setContext', 'claudeHelper.asanaAvailable', asana);
+  vscode.commands.executeCommand('setContext', 'claudeHelper.agentSessionsAvailable',
+    asana || hasAgentSessionSource());
+  return asana;
+}
+
 function activate(context) {
   setExtCtx(context);
+  publishAvailability();
   applyFastHoverOnce(context);
   vscode.commands.executeCommand('setContext', 'claudeHelper.hasHiddenSessions', hiddenSessions().size > 0);
 
@@ -67,8 +82,9 @@ function activate(context) {
   );
   startTabStateWatcher(context);
   setTimeout(tabStateSweepStale, 5000);
+  const askProvider = new AskViewProvider();
   context.subscriptions.push(vscode.window.registerWebviewViewProvider(
-    'claudeHelper.ask', new AskViewProvider(), { webviewOptions: { retainContextWhenHidden: true } }
+    'claudeHelper.ask', askProvider, { webviewOptions: { retainContextWhenHidden: true } }
   ));
   refreshAsanaProjects(12);   // warm the New Task routing table; never blocks a submit
 
@@ -109,6 +125,7 @@ function activate(context) {
   context.subscriptions.push(bookmarksView);
 
   const reg = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+  reg('claudeHelper.refreshQueueCounts', () => askProvider.refreshCounts());
 
   // favourites commands
   reg('claudeHelper.refreshFavourites', () => favProvider.refresh());
@@ -397,7 +414,12 @@ function activate(context) {
     // sessions to repaint so a reconnected Claude TUI isn't left frozen on a stale frame.
     vscode.window.onDidChangeWindowState((s) => { if (s.focused) redrawDtachSessions(); }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('claudeHelper')) { favProvider.refresh(); termProvider.refresh(); sessProvider.refresh(); agentProvider.refresh(); bookmarksProvider.refresh(); }
+      if (!e.affectsConfiguration('claudeHelper')) return;
+      forgetAsanaAvailable();
+      publishAvailability();
+      askProvider.postAsanaState();
+      favProvider.refresh(); termProvider.refresh(); sessProvider.refresh();
+      agentProvider.refresh(); bookmarksProvider.refresh();
     })
   );
 
@@ -410,15 +432,17 @@ function activate(context) {
 
   // Agent Sessions: faster refresh (15s) so live/ended status and new pickups
   // appear promptly, plus a watcher on the index file for instant updates.
-  const agentTimer = setInterval(() => agentProvider.refresh(), 15_000);
-  context.subscriptions.push({ dispose: () => clearInterval(agentTimer) });
-  try {
-    const idxFile = agentIndexFile();
-    const watcher = fs.watch(path.dirname(idxFile), (_evt, fname) => {
-      if (!fname || fname.startsWith(path.basename(idxFile))) agentProvider.refresh();
-    });
-    context.subscriptions.push({ dispose: () => watcher.close() });
-  } catch { /* dir may not exist yet; timer still covers it */ }
+  if (asanaAvailable() || hasAgentSessionSource()) {
+    const agentTimer = setInterval(() => agentProvider.refresh(), 15_000);
+    context.subscriptions.push({ dispose: () => clearInterval(agentTimer) });
+    try {
+      const idxFile = agentIndexFile();
+      const watcher = fs.watch(path.dirname(idxFile), (_evt, fname) => {
+        if (!fname || fname.startsWith(path.basename(idxFile))) agentProvider.refresh();
+      });
+      context.subscriptions.push({ dispose: () => watcher.close() });
+    } catch { /* dir may not exist yet; timer still covers it */ }
+  }
 }
 
 function deactivate() {}

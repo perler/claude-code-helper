@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "Favourite directories + open terminal list for Claude Code workflows",
-  "version": "0.41.0",
+  "version": "0.42.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -42,7 +42,8 @@
         },
         {
           "id": "claudeHelper.agentSessions",
-          "name": "Agent Sessions"
+          "name": "Agent Sessions",
+          "when": "claudeHelper.agentSessionsAvailable"
         },
         {
           "id": "claudeHelper.sessions",
@@ -124,6 +125,12 @@
         "command": "claudeHelper.resumeClaudeFromExplorer",
         "title": "Resume Claude Here",
         "icon": "$(debug-rerun)",
+        "category": "Claude Code Helper"
+      },
+      {
+        "command": "claudeHelper.refreshQueueCounts",
+        "title": "Refresh Queue Counts",
+        "icon": "$(refresh)",
         "category": "Claude Code Helper"
       },
       {
@@ -384,6 +391,11 @@
           "group": "navigation@0"
         },
         {
+          "command": "claudeHelper.refreshQueueCounts",
+          "when": "view == claudeHelper.ask && claudeHelper.asanaAvailable",
+          "group": "navigation@1"
+        },
+        {
           "command": "claudeHelper.addFavourite",
           "when": "view == claudeHelper.favourites",
           "group": "navigation@1"
@@ -552,12 +564,12 @@
         },
         {
           "command": "claudeHelper.openTerminalTask",
-          "when": "view == claudeHelper.terminals && viewItem == terminalAsana",
+          "when": "view == claudeHelper.terminals && viewItem == terminalAsana && claudeHelper.asanaAvailable",
           "group": "inline@3"
         },
         {
           "command": "claudeHelper.openTerminalTask",
-          "when": "view == claudeHelper.terminals && viewItem == terminalAsana",
+          "when": "view == claudeHelper.terminals && viewItem == terminalAsana && claudeHelper.asanaAvailable",
           "group": "1_focus@4"
         },
         {
@@ -597,12 +609,12 @@
         },
         {
           "command": "claudeHelper.openSessionTask",
-          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/ && claudeHelper.asanaAvailable",
           "group": "inline@2"
         },
         {
           "command": "claudeHelper.openSessionTask",
-          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/ && claudeHelper.asanaAvailable",
           "group": "1_open@4"
         },
         {
@@ -632,7 +644,7 @@
         },
         {
           "command": "claudeHelper.openAgentTask",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /Task$/",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /Task$/ && claudeHelper.asanaAvailable",
           "group": "inline@2"
         },
         {
@@ -667,7 +679,7 @@
         },
         {
           "command": "claudeHelper.openAgentTask",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
+          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/ && claudeHelper.asanaAvailable",
           "group": "1_open@4"
         },
         {
