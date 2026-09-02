@@ -1103,6 +1103,69 @@ function refreshAsanaProjects(maxAgeHours) {
   } catch {}
 }
 
+// ── the queue buttons ────────────────────────────────────────────────────────
+//
+// A sidebar webview cannot shrink to its content: the New Task view keeps whatever
+// height the sidebar gives it, so everything below the hint line is blank space we
+// cannot reclaim. The queue buttons live there, which is why they cost the box
+// nothing. Each one starts an ordinary session whose first prompt hands the
+// inbox-zero skill a scope. The count is on the button so a zero saves the click.
+
+const QUEUE_SCOPES = [
+  { id: 'today', label: 'Today', prompt: '/inbox-zero today' },
+  { id: 'input', label: '\u23f3 Input', prompt: '/inbox-zero input' },
+  { id: 'high', label: '\ud83d\udd25 High', prompt: '/inbox-zero high' },
+];
+
+function queueCountsFile() { return path.join(os.homedir(), '.cache', 'claude-code-helper', 'queue-counts.json'); }
+
+function loadQueueCounts() {
+  try { return JSON.parse(fs.readFileSync(queueCountsFile(), 'utf8')); } catch { return {}; }
+}
+
+// One `asana queue <scope> --count` per button, in parallel, cached on disk. The
+// number is a hint and never a gate — a stale or missing count still leaves the
+// button working — so nothing here blocks, retries or reports. A scope whose call
+// fails simply keeps no entry, and its button shows a dash rather than a wrong
+// number, which is the one thing a count on a button must never do.
+function refreshQueueCounts(maxAgeMs, done) {
+  const cmd = asanaCommand();
+  if (!cmd) return;
+  const file = queueCountsFile();
+  if (maxAgeMs) {
+    try { if ((Date.now() - fs.statSync(file).mtimeMs) < maxAgeMs) return; } catch {}
+  }
+  const tokens = cmd.split(/\s+/);
+  const counts = {};
+  let left = QUEUE_SCOPES.length;
+  const finish = () => {
+    if (--left) return;
+    try {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(counts));
+    } catch {}
+    if (done) { try { done(counts); } catch {} }
+  };
+  for (const s of QUEUE_SCOPES) {
+    try {
+      cp.execFile(tokens[0], [...tokens.slice(1), 'queue', s.id, '--count'], { timeout: 30000 }, (err, stdout) => {
+        // `--count` prints the bare integer, or "100+" when the search hit Asana's
+        // page cap. Both are display strings here, so neither is parsed as a number.
+        const v = String(stdout || '').trim();
+        if (!err && /^\d+\+?$/.test(v)) counts[s.id] = v;
+        finish();
+      });
+    } catch { finish(); }
+  }
+}
+
+// Where every queue button ends up: a new session in the home folder whose first
+// prompt is the skill invocation. Named, so the tab says which queue it is walking
+// instead of a timestamp.
+function startQueueSession(prompt, label) {
+  return launchClaude({ path: os.homedir(), label }, false, { skipNamePrompt: true, initialPrompt: prompt });
+}
+
 // ── the task we already have ─────────────────────────────────────────────────
 //
 // Half of what gets pasted into the box is the name of a task that already exists —
@@ -2149,9 +2212,20 @@ class AskViewProvider {
     this.view = view;
     view.webview.options = { enableScripts: true };
     view.webview.html = this._html(view.webview);
+    // Counts: paint whatever the cache holds immediately, then refresh behind it.
+    // Repeated on every re-show, because a count Pat read an hour ago is the one
+    // thing that would make the buttons lie.
+    const pushCounts = () => { try { view.webview.postMessage({ type: 'counts', counts: loadQueueCounts() }); } catch {} };
+    const freshenCounts = () => { pushCounts(); refreshQueueCounts(2 * 60e3, pushCounts); };
+    freshenCounts();
+    view.onDidChangeVisibility(() => { if (view.visible) freshenCounts(); });
     view.webview.onDidReceiveMessage((msg) => {
       if (!msg) return;
       const post = (m) => { try { view.webview.postMessage(m); } catch {} };
+      if (msg.type === 'queue') {
+        this._startQueue(msg.scope, post);
+        return;
+      }
       if (msg.type === 'ask') {
         askClaudeSession(msg.text, {
           state: (s, refocus) => post({ type: 'state', state: s, refocus: !!refocus }),
@@ -2168,6 +2242,38 @@ class AskViewProvider {
       }
     });
   }
+  // A queue button skips the whole routing machinery — the destination is known, so
+  // there is nothing to propose and nothing to confirm. Only the project scope asks
+  // anything, and what it asks is which project.
+  async _startQueue(scope, post) {
+    let prompt, label;
+    if (scope === 'project') {
+      const projects = loadAsanaProjects();
+      if (!projects.length) {
+        vscode.window.showWarningMessage('No Asana project list cached yet — check the claudeHelper.asanaCommand setting.');
+        return;
+      }
+      const pick = await vscode.window.showQuickPick(
+        projects.map((p) => ({ label: p.name, gid: p.gid })),
+        { placeHolder: 'Which project should the walkthrough cover?' }
+      );
+      if (!pick) return;
+      prompt = `/inbox-zero project ${pick.gid}`;
+      label = `inbox-zero · ${pick.label}`;
+    } else {
+      const s = QUEUE_SCOPES.find((x) => x.id === scope);
+      if (!s) return;
+      prompt = s.prompt;
+      label = `inbox-zero · ${s.label}`;
+    }
+    post({ type: 'state', state: 'launching' });
+    let started = false;
+    try { started = await startQueueSession(prompt, label); } catch {}
+    // Same contract as the text path: refocus only when nothing launched, so a
+    // started session keeps the cursor Pat is about to type into.
+    post({ type: 'state', state: 'idle', refocus: !started });
+  }
+
   _html(webview) {
     const nonce = crypto.randomBytes(16).toString('base64');
     return `<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -2194,6 +2300,21 @@ class AskViewProvider {
   #dir { color: var(--vscode-descriptionForeground); word-break: break-all; }
   /* Indeterminate bar, VS Code's own: a slice sliding across a dim track. Naming
      takes ~10s, so the wait needs to look like progress, not like a hang. */
+  /* The buttons occupy space the view cannot reclaim anyway: a sidebar webview keeps
+     its allotted height, so everything under the hint is blank without them. */
+  /* One row, always. Wrapping to a second row is what pushes this view past the
+     height it is given and puts a scrollbar in a box that had spare space. */
+  #queues { display: flex; flex-wrap: nowrap; gap: 3px; margin-top: 6px; }
+  #queues button {
+    flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    padding: 3px 6px; font-family: inherit; font-size: 11px; cursor: pointer; white-space: nowrap;
+    color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground);
+    border: none; border-radius: 2px;
+  }
+  #queues button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground); }
+  #queues button:disabled { opacity: .5; cursor: default; }
+  /* Tabular figures so a count changing 9 -> 10 doesn't shuffle the row. */
+  #queues .n { opacity: .75; font-variant-numeric: tabular-nums; }
   #bar { height: 2px; margin-top: 4px; overflow: hidden; display: none; }
   #bar.on { display: block; }
   #bar > div { width: 40%; height: 100%; background: var(--vscode-progressBar-background); animation: slide 2s ease-in-out infinite; }
@@ -2203,6 +2324,12 @@ class AskViewProvider {
 <div id="bar"><div></div></div>
 <div id="plan">→ <span id="kind"></span> · <span id="dest"></span><br><span id="dir"></span></div>
 <div id="hint">Enter to start a session · Shift+Enter for a new line</div>
+<div id="queues">
+  <button data-scope="today" title="Walk everything due today or overdue">Today <span class="n" id="n-today">–</span></button>
+  <button data-scope="input" title="Walk the ⏳ Input needed queue">⏳ Input <span class="n" id="n-input">–</span></button>
+  <button data-scope="high" title="Walk the 🔥 High queue">🔥 High <span class="n" id="n-high">–</span></button>
+  <button data-scope="project" title="Walk one project — pick which">📁</button>
+</div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
   const q = document.getElementById('q');
@@ -2232,6 +2359,15 @@ class AskViewProvider {
     paint();
   };
   const paint = () => { hint.textContent = label + ' ' + Math.round((Date.now() - t0) / 1000) + 's'; };
+  const queues = document.getElementById('queues');
+  const qBtns = queues.querySelectorAll('button');
+  // A click is the whole gesture — no text, no proposal, no confirmation round.
+  queues.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    vscode.postMessage({ type: 'queue', scope: b.dataset.scope });
+  });
+  const setQueuesBusy = (busy) => { for (const b of qBtns) b.disabled = busy; };
   const grow = () => { q.style.height = 'auto'; q.style.height = Math.min(q.scrollHeight, 140) + 'px'; };
   q.addEventListener('input', grow);
   q.addEventListener('keydown', (e) => {
@@ -2254,7 +2390,16 @@ class AskViewProvider {
   });
   window.addEventListener('message', (e) => {
     const m = e.data || {};
+    if (m.type === 'counts') {
+      // A scope missing from the payload keeps its dash: no number beats a wrong one.
+      for (const s of ['today', 'input', 'high']) {
+        const el = document.getElementById('n-' + s);
+        if (el) el.textContent = (m.counts && m.counts[s]) || '–';
+      }
+      return;
+    }
     if (m.type === 'propose') {
+      setQueuesBusy(true);
       stopTick();
       bar.classList.remove('on');
       planKind = m.kind;
@@ -2274,6 +2419,7 @@ class AskViewProvider {
     clearPlan();
     const busy = m.state !== 'idle';
     q.disabled = busy;
+    setQueuesBusy(busy);
     bar.classList.toggle('on', busy);
     if (m.state === 'naming') startTick('Routing task…');
     else if (m.state === 'launching') startTick('Starting Claude…');
