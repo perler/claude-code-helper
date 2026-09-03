@@ -31,7 +31,7 @@ const { cfg, dtachSocketDir, shortHome } = require('./lib/shared');
 const {
   createTabStateProvider, startTabStateWatcher, tabStateSeedTerminals, tabStateSweepStale, tabStateTerminalClosed, tabStateTerminalFocused, tabStateTerminalOpened,
 } = require('./lib/tabstate');
-const { TerminalsProvider, getTerminalCwd, terminalAsanaTask, terminalFromTabArg } = require('./lib/terminals');
+const { getTerminalCwd, terminalAsanaTask, terminalFromTabArg } = require('./lib/terminals');
 let agentProvider;
 let favProvider;
 let bookmarksProvider;
@@ -95,12 +95,6 @@ function activate(context) {
     treeDataProvider: favProvider, showCollapseAll: false,
   });
   context.subscriptions.push(favView);
-
-  const termProvider = new TerminalsProvider();
-  const termView = vscode.window.createTreeView('claudeHelper.terminals', {
-    treeDataProvider: termProvider, showCollapseAll: false,
-  });
-  context.subscriptions.push(termView);
 
   sessProvider = new SessionsProvider();
   const sessView = vscode.window.createTreeView('claudeHelper.sessions', {
@@ -205,46 +199,6 @@ function activate(context) {
   reg('claudeHelper.moveUp', (fav) => move(fav, -1));
   reg('claudeHelper.moveDown', (fav) => move(fav, 1));
 
-  // terminals commands
-  reg('claudeHelper.refreshTerminals', () => termProvider.refresh());
-  reg('claudeHelper.newTerminal', () => vscode.commands.executeCommand('workbench.action.terminal.new'));
-  reg('claudeHelper.focusTerminal', (node) => {
-    if (!node || !node.terminal) return;
-    node.terminal.show(false);
-  });
-  reg('claudeHelper.revealTerminalCwd', (node) => {
-    if (!node) return;
-    const cwd = node.cwd || getTerminalCwd(node.terminal);
-    if (!cwd) { vscode.window.showInformationMessage('No working directory available.'); return; }
-    vscode.commands.executeCommand('revealInExplorer', cwd);
-  });
-  reg('claudeHelper.copyTerminalCwd', (node) => {
-    if (!node) return;
-    const cwd = node.cwd || getTerminalCwd(node.terminal);
-    if (!cwd) return;
-    vscode.env.clipboard.writeText(cwd.fsPath);
-    vscode.window.setStatusBarMessage(`Copied: ${cwd.fsPath}`, 2000);
-  });
-  reg('claudeHelper.renameTerminal', async (node) => {
-    if (!node || !node.terminal) return;
-    node.terminal.show(false);
-    await vscode.commands.executeCommand('workbench.action.terminal.rename');
-  });
-  reg('claudeHelper.splitTerminal', async (node) => {
-    if (!node || !node.terminal) return;
-    node.terminal.show(false);
-    await vscode.commands.executeCommand('workbench.action.terminal.split');
-  });
-  reg('claudeHelper.killTerminal', async (node) => {
-    if (!node || !node.terminal) return;
-    if (cfg().get('confirmKillTerminal')) {
-      const c = await vscode.window.showWarningMessage(
-        `Kill terminal "${node.terminal.name}"?`, { modal: true }, 'Kill'
-      );
-      if (c !== 'Kill') return;
-    }
-    node.terminal.dispose();
-  });
   // session commands
   reg('claudeHelper.refreshSessions', () => sessProvider.refresh());
   reg('claudeHelper.searchSessions', () => {
@@ -337,13 +291,9 @@ function activate(context) {
     vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(node.entry.dir), { forceNewWindow: true });
   });
   reg('claudeHelper.openAgentTask', (node) => openAsanaTask(node && node.entry));
-  // Same link from the other two views. Both re-resolve at click time instead of
-  // trusting the render-time node: the index moves on (a session ends, a terminal
-  // gets reused for another task) while the tree sits there.
-  reg('claudeHelper.openTerminalTask', (node) => {
-    if (!node || !node.terminal) return;
-    openAsanaTask(terminalAsanaTask(node.terminal, node.cwd) || node.task);
-  });
+  // Same link from Recent Sessions. It re-resolves at click time instead of trusting
+  // the render-time node: the index moves on (a session ends, a terminal gets reused
+  // for another task) while the tree sits there.
   reg('claudeHelper.openSessionTask', (node) => {
     if (!node || node.kind !== 'session') return;
     openAsanaTask(asanaTaskFor(node.session.id) || node.session.asana);
@@ -387,28 +337,40 @@ function activate(context) {
     await vscode.window.showTextDocument(vscode.Uri.file(file));
   });
 
-  // Right-click on a session's own editor tab. The menu passes the tab's resource URI,
-  // which terminalFromTabArg turns back into the terminal; several terminals sharing a
-  // name in different folders is the one ambiguous case, and that asks.
   // Right-click on a session's own editor tab. See terminalFromTabArg for how the
   // menu's arguments turn back into a terminal; when they can't pin down exactly one,
-  // it asks rather than revealing some other session's folder.
-  reg('claudeHelper.revealTabCwd', async (arg, ctx) => {
-    let t = terminalFromTabArg(arg, ctx);
-    if (Array.isArray(t)) {
-      const pick = await vscode.window.showQuickPick(
-        t.map((term) => {
-          const c = getTerminalCwd(term);
-          return { label: term.name, description: c ? shortHome(c.fsPath) : 'no cwd', terminal: term };
-        }),
-        { placeHolder: 'Which session?' }
-      );
-      t = pick && pick.terminal;
+  // it asks rather than acting on some other session.
+  const pickTabTerminal = async (arg, ctx) => {
+    const t = terminalFromTabArg(arg, ctx);
+    if (!Array.isArray(t)) {
+      if (!t) vscode.window.showInformationMessage('No session behind that tab.');
+      return t;
     }
-    if (!t) { vscode.window.showInformationMessage('No session behind that tab.'); return; }
+    const pick = await vscode.window.showQuickPick(
+      t.map((term) => {
+        const c = getTerminalCwd(term);
+        return { label: term.name, description: c ? shortHome(c.fsPath) : 'no cwd', terminal: term };
+      }),
+      { placeHolder: 'Which session?' }
+    );
+    return pick && pick.terminal;
+  };
+
+  reg('claudeHelper.revealTabCwd', async (arg, ctx) => {
+    const t = await pickTabTerminal(arg, ctx);
+    if (!t) return;
     const cwd = getTerminalCwd(t);
     if (!cwd) { vscode.window.showInformationMessage('No working directory available.'); return; }
     vscode.commands.executeCommand('revealInExplorer', cwd);
+  });
+
+  // Same link off the tab, re-resolved at click time for the same reason.
+  reg('claudeHelper.openTabTask', async (arg, ctx) => {
+    const t = await pickTabTerminal(arg, ctx);
+    if (!t) return;
+    const task = terminalAsanaTask(t, getTerminalCwd(t));
+    if (!task) { vscode.window.showInformationMessage(`No Asana task recorded for "${t.name}".`); return; }
+    openAsanaTask(task);
   });
 
   reg('claudeHelper.revealActiveTerminalCwd', () => {
@@ -419,22 +381,17 @@ function activate(context) {
     vscode.commands.executeCommand('revealInExplorer', cwd);
   });
 
-  const refreshTerms = () => termProvider.refresh();
   context.subscriptions.push(
-    vscode.window.onDidOpenTerminal(refreshTerms),
     // Closing a session's attach terminal doesn't end the session (the dtach
     // master keeps Claude alive) — drop the map entry and refresh Recent
     // Sessions so the row reappears there as 🟢 running.
     vscode.window.onDidCloseTerminal((t) => {
       for (const [id, term] of sessionTerminals) if (term === t) sessionTerminals.delete(id);
-      refreshTerms();
       if (sessProvider) { try { sessProvider.refresh(); } catch {} }
       // Its claude process may take a moment to exit; sweep shortly after so an
       // ended scratch session's folder gets renamed without waiting for the 60s tick.
       setTimeout(() => { try { sweepScratchRenames(); } catch {} }, 4000);
     }),
-    vscode.window.onDidChangeActiveTerminal(refreshTerms),
-    vscode.window.onDidChangeTerminalShellIntegration && vscode.window.onDidChangeTerminalShellIntegration(refreshTerms),
     // Window regained focus (fires on browser/notebook reconnect): force live dtach
     // sessions to repaint so a reconnected Claude TUI isn't left frozen on a stale frame.
     vscode.window.onDidChangeWindowState((s) => { if (s.focused) redrawDtachSessions(); }),
@@ -444,7 +401,7 @@ function activate(context) {
       forgetMailAvailable();
       publishAvailability();
       askProvider.postAsanaState();
-      favProvider.refresh(); termProvider.refresh(); sessProvider.refresh();
+      favProvider.refresh(); sessProvider.refresh();
       agentProvider.refresh(); bookmarksProvider.refresh();
     })
   );

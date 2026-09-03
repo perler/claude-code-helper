@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.45.0",
+  "version": "0.46.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -37,10 +37,6 @@
           "name": "Favourites"
         },
         {
-          "id": "claudeHelper.terminals",
-          "name": "Running Sessions"
-        },
-        {
           "id": "claudeHelper.agentSessions",
           "name": "Agent Sessions",
           "when": "claudeHelper.agentSessionsAvailable"
@@ -59,10 +55,6 @@
       {
         "view": "claudeHelper.favourites",
         "contents": "No favourites yet.\n[Add Favourite](command:claudeHelper.addFavourite)\n[Add Current Workspace](command:claudeHelper.addCurrentWorkspace)"
-      },
-      {
-        "view": "claudeHelper.terminals",
-        "contents": "No open terminals.\n[New Terminal](command:workbench.action.terminal.new)"
       },
       {
         "view": "claudeHelper.agentSessions",
@@ -188,48 +180,14 @@
         "icon": "$(arrow-down)"
       },
       {
-        "command": "claudeHelper.refreshTerminals",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "claudeHelper.newTerminal",
-        "title": "New Terminal",
-        "icon": "$(add)"
-      },
-      {
-        "command": "claudeHelper.focusTerminal",
-        "title": "Focus Terminal",
-        "icon": "$(play)"
-      },
-      {
-        "command": "claudeHelper.revealTerminalCwd",
-        "title": "Reveal CWD in Explorer",
-        "icon": "$(folder-opened)"
-      },
-      {
         "command": "claudeHelper.revealTabCwd",
         "title": "Reveal Session Folder",
         "icon": "$(folder-opened)"
       },
       {
-        "command": "claudeHelper.copyTerminalCwd",
-        "title": "Copy CWD Path"
-      },
-      {
-        "command": "claudeHelper.renameTerminal",
-        "title": "Rename Terminal",
-        "icon": "$(edit)"
-      },
-      {
-        "command": "claudeHelper.splitTerminal",
-        "title": "Split Terminal",
-        "icon": "$(split-horizontal)"
-      },
-      {
-        "command": "claudeHelper.killTerminal",
-        "title": "Kill Terminal",
-        "icon": "$(trash)"
+        "command": "claudeHelper.openTabTask",
+        "title": "Open Asana Task",
+        "icon": "$(link-external)"
       },
       {
         "command": "claudeHelper.refreshSessions",
@@ -322,11 +280,6 @@
         "icon": "$(link-external)"
       },
       {
-        "command": "claudeHelper.openTerminalTask",
-        "title": "Open Asana Task",
-        "icon": "$(link-external)"
-      },
-      {
         "command": "claudeHelper.openSessionTask",
         "title": "Open Asana Task",
         "icon": "$(link-external)"
@@ -414,16 +367,6 @@
           "command": "claudeHelper.refreshFavourites",
           "when": "view == claudeHelper.favourites",
           "group": "navigation@3"
-        },
-        {
-          "command": "claudeHelper.newTerminal",
-          "when": "view == claudeHelper.terminals",
-          "group": "navigation@1"
-        },
-        {
-          "command": "claudeHelper.refreshTerminals",
-          "when": "view == claudeHelper.terminals",
-          "group": "navigation@2"
         },
         {
           "command": "claudeHelper.searchSessions",
@@ -541,56 +484,6 @@
           "command": "claudeHelper.removeFavourite",
           "when": "view == claudeHelper.favourites && viewItem == favourite",
           "group": "3_edit@9"
-        },
-        {
-          "command": "claudeHelper.focusTerminal",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "inline@1"
-        },
-        {
-          "command": "claudeHelper.revealTerminalCwd",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "inline@2"
-        },
-        {
-          "command": "claudeHelper.focusTerminal",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "1_focus@1"
-        },
-        {
-          "command": "claudeHelper.revealTerminalCwd",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "1_focus@2"
-        },
-        {
-          "command": "claudeHelper.copyTerminalCwd",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "1_focus@3"
-        },
-        {
-          "command": "claudeHelper.openTerminalTask",
-          "when": "view == claudeHelper.terminals && viewItem == terminalAsana && claudeHelper.asanaAvailable",
-          "group": "inline@3"
-        },
-        {
-          "command": "claudeHelper.openTerminalTask",
-          "when": "view == claudeHelper.terminals && viewItem == terminalAsana && claudeHelper.asanaAvailable",
-          "group": "1_focus@4"
-        },
-        {
-          "command": "claudeHelper.splitTerminal",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "2_edit@1"
-        },
-        {
-          "command": "claudeHelper.renameTerminal",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "2_edit@2"
-        },
-        {
-          "command": "claudeHelper.killTerminal",
-          "when": "view == claudeHelper.terminals && viewItem =~ /^terminal(Asana)?$/",
-          "group": "9_destroy@1"
         },
         {
           "command": "claudeHelper.resumeSession",
@@ -750,12 +643,22 @@
           "command": "claudeHelper.revealTabCwd",
           "when": "resourceScheme == vscode-terminal",
           "group": "2_files@1"
+        },
+        {
+          "command": "claudeHelper.openTabTask",
+          "when": "resourceScheme == vscode-terminal && claudeHelper.asanaAvailable",
+          "group": "2_files@2"
         }
       ],
       "terminal/title/context": [
         {
           "command": "claudeHelper.revealTabCwd",
           "group": "2_files@1"
+        },
+        {
+          "command": "claudeHelper.openTabTask",
+          "when": "claudeHelper.asanaAvailable",
+          "group": "2_files@2"
         }
       ]
     },
@@ -879,16 +782,6 @@
           ],
           "default": "reveal",
           "description": "What Enter does in \"Go to Folder…\". The other actions stay available as buttons on the highlighted row."
-        },
-        "claudeHelper.confirmKillTerminal": {
-          "type": "boolean",
-          "default": true,
-          "description": "Ask for confirmation when killing a terminal."
-        },
-        "claudeHelper.showTerminalsWithoutCwd": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show terminals whose working directory is not yet known."
         },
         "claudeHelper.shortenPaths": {
           "type": "boolean",

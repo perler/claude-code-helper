@@ -1,30 +1,27 @@
 # Claude Code Helper
 
-A sidebar for running Claude Code out of VS Code / code-server. Six panels:
+A sidebar for running Claude Code out of VS Code / code-server. Five panels:
 
 1. **New Task** — a text box that starts a session. It works out where the work belongs
    (a client, a project, or a fresh scratch folder), names the session and opens it.
 2. **Favourites** — bookmarked directories; start or resume a session in one click.
    Resuming a folder with several sessions opens a picker.
-3. **Running Sessions** — the open terminals, with focus and right-click actions
-   (reveal CWD, rename, split, kill). The reveal is also on the session's own editor
-   tab: right-click the tab, **Reveal Session Folder**.
-4. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
+3. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
    attach, resume and kill.
-5. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
+4. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
    with resume.
-6. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
+5. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
 
 Replaces the standalone `claude-favourites` and `terminal-tree` extensions.
 
-**Two of those are only there when the machine has the pieces they need.** The Agent
+**One of those is only there when the machine has the pieces it needs.** The Agent
 Sessions panel appears when the Asana CLI (`claudeHelper.asanaCommand`) is installed or
 the bridge's index/history file exists. The queue buttons under the New Task box, and
 the "Open Asana Task" context-menu items, appear when that CLI is installed; the ✉️ Mail
 button needs `claudeHelper.mailInboxCommand`. On a
 workstation without either, the Agent Sessions panel is gone, the New Task box keeps
-everything but its queue row, and nothing is spawned in the background. Everything else — favourites, terminals, recent sessions, bookmarks,
-Go to Folder, the tab badges — needs nothing beyond Claude Code itself.
+everything but its queue row, and nothing is spawned in the background. Everything else — favourites, recent sessions, bookmarks,
+Go to Folder, the tab badges, Reveal Session Folder — needs nothing beyond Claude Code itself.
 
 ## Installing on another workstation
 
@@ -69,8 +66,6 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.externalTerminalCommand` | `` | Template with `{cwd}` `{cmd}` |
 | `claudeHelper.reuseTerminal` | `false` | Reuse terminal with same name |
 | `claudeHelper.confirmRemove` | `true` | Confirm before removing a favourite |
-| `claudeHelper.confirmKillTerminal` | `true` | Confirm before killing a terminal |
-| `claudeHelper.showTerminalsWithoutCwd` | `true` | Show terminals with no detected cwd |
 | `claudeHelper.shortenPaths` | `true` | Replace `$HOME` with `~` in displayed paths |
 | `claudeHelper.folderSearchRoots` | `~/clients ~/projects ~/hosting ~/tasks` | Roots scanned by Go to Folder… |
 | `claudeHelper.folderSearchDepth` | `3` | Levels below each root to descend |
@@ -132,12 +127,19 @@ out of the picker:
   numbered table with a proposed action per mail, then waits. Nothing is sent and no task
   is created before you approve its row.
 
-## Reveal Session Folder from the tab
+## The session tab's own right-click menu
 
-Right-clicking a Claude session's editor tab has a **Reveal Session Folder** entry that shows
-that session's directory in the Explorer — the one thing the Running Sessions panel was mostly
-being kept open for, without opening the panel. `Ctrl+Alt+T` does the same for the session you
-are sitting in.
+Right-clicking a Claude session's editor tab carries the two things that used to need the
+sidebar open:
+
+- **Reveal Session Folder** — shows that session's directory in the Explorer. `Ctrl+Alt+T`
+  does the same for the session you are sitting in.
+- **Open Asana Task** — the task the session belongs to, when the bridge recorded one and the
+  Asana CLI is installed. It re-resolves at click time, so a terminal reused for another task
+  points at the right one.
+
+This is what the Running Sessions panel was for; it is gone as of 0.46.0, since focus, rename,
+split and kill are all on VS Code's own tab menu already.
 
 Which tab was clicked is worked out the long way round. The menu hands the command the tab's
 resource URI — `vscode-terminal:/<workspaceId>/<instanceId>`, whose instance id nothing in the
@@ -145,8 +147,8 @@ extension API maps back to a terminal, and whose fragment (the title at construc
 for a terminal restored across a window reload — plus `{ groupId, editorIndex }`. The index is
 the usable half: it finds the Tab, and the Tab's label is matched against the open terminals'
 names. When two sessions carry the same name in different folders the match cannot decide, so
-it asks with a picker rather than revealing the active tab's folder, which is what a silent
-fallback did in testing.
+it asks with a picker rather than falling back to the active tab, which is what a silent
+fallback did in testing — it revealed the wrong folder.
 
 ## Tab state decorations
 
