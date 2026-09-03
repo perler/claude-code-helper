@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.42.1",
+  "version": "0.42.2",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
