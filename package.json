@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.44.0",
+  "version": "0.45.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -205,6 +205,11 @@
       {
         "command": "claudeHelper.revealTerminalCwd",
         "title": "Reveal CWD in Explorer",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "claudeHelper.revealTabCwd",
+        "title": "Reveal Session Folder",
         "icon": "$(folder-opened)"
       },
       {
@@ -739,6 +744,19 @@
           "when": "explorerResourceIsFolder",
           "group": "claude-helper@4"
         }
+      ],
+      "editor/title/context": [
+        {
+          "command": "claudeHelper.revealTabCwd",
+          "when": "resourceScheme == vscode-terminal",
+          "group": "2_files@1"
+        }
+      ],
+      "terminal/title/context": [
+        {
+          "command": "claudeHelper.revealTabCwd",
+          "group": "2_files@1"
+        }
       ]
     },
     "keybindings": [
@@ -950,7 +968,7 @@
         "claudeHelper.mailInboxCommand": {
           "type": "string",
           "default": "~/projects/infra/email-automation/bin/mail-inbox.py",
-          "description": "Script behind the \u2709\ufe0f Mail button: prints the inbox mail addressed to us as JSON (subject, sender, client, read state, thread link). Empty or missing = no Mail button."
+          "description": "Script behind the ✉️ Mail button: prints the inbox mail addressed to us as JSON (subject, sender, client, read state, thread link). Empty or missing = no Mail button."
         },
         "claudeHelper.clientsDir": {
           "type": "string",

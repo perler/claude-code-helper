@@ -7,7 +7,8 @@ A sidebar for running Claude Code out of VS Code / code-server. Six panels:
 2. **Favourites** — bookmarked directories; start or resume a session in one click.
    Resuming a folder with several sessions opens a picker.
 3. **Running Sessions** — the open terminals, with focus and right-click actions
-   (reveal CWD, rename, split, kill).
+   (reveal CWD, rename, split, kill). The reveal is also on the session's own editor
+   tab: right-click the tab, **Reveal Session Folder**.
 4. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
    attach, resume and kill.
 5. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
@@ -130,6 +131,22 @@ out of the picker:
 - **Triage all N** starts one session that reads every one of them and hands back a
   numbered table with a proposed action per mail, then waits. Nothing is sent and no task
   is created before you approve its row.
+
+## Reveal Session Folder from the tab
+
+Right-clicking a Claude session's editor tab has a **Reveal Session Folder** entry that shows
+that session's directory in the Explorer — the one thing the Running Sessions panel was mostly
+being kept open for, without opening the panel. `Ctrl+Alt+T` does the same for the session you
+are sitting in.
+
+Which tab was clicked is worked out the long way round. The menu hands the command the tab's
+resource URI — `vscode-terminal:/<workspaceId>/<instanceId>`, whose instance id nothing in the
+extension API maps back to a terminal, and whose fragment (the title at construction) is empty
+for a terminal restored across a window reload — plus `{ groupId, editorIndex }`. The index is
+the usable half: it finds the Tab, and the Tab's label is matched against the open terminals'
+names. When two sessions carry the same name in different folders the match cannot decide, so
+it asks with a picker rather than revealing the active tab's folder, which is what a silent
+fallback did in testing.
 
 ## Tab state decorations
 

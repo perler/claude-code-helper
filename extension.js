@@ -27,11 +27,11 @@ const { sessionTerminals } = require('./lib/session-registry');
 const {
   SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, setHiddenSessions,
 } = require('./lib/sessions');
-const { cfg, dtachSocketDir } = require('./lib/shared');
+const { cfg, dtachSocketDir, shortHome } = require('./lib/shared');
 const {
   createTabStateProvider, startTabStateWatcher, tabStateSeedTerminals, tabStateSweepStale, tabStateTerminalClosed, tabStateTerminalFocused, tabStateTerminalOpened,
 } = require('./lib/tabstate');
-const { TerminalsProvider, getTerminalCwd, terminalAsanaTask } = require('./lib/terminals');
+const { TerminalsProvider, getTerminalCwd, terminalAsanaTask, terminalFromTabArg } = require('./lib/terminals');
 let agentProvider;
 let favProvider;
 let bookmarksProvider;
@@ -385,6 +385,30 @@ function activate(context) {
   reg('claudeHelper.openBookmarksFile', async () => {
     const file = ensureBookmarksFile();
     await vscode.window.showTextDocument(vscode.Uri.file(file));
+  });
+
+  // Right-click on a session's own editor tab. The menu passes the tab's resource URI,
+  // which terminalFromTabArg turns back into the terminal; several terminals sharing a
+  // name in different folders is the one ambiguous case, and that asks.
+  // Right-click on a session's own editor tab. See terminalFromTabArg for how the
+  // menu's arguments turn back into a terminal; when they can't pin down exactly one,
+  // it asks rather than revealing some other session's folder.
+  reg('claudeHelper.revealTabCwd', async (arg, ctx) => {
+    let t = terminalFromTabArg(arg, ctx);
+    if (Array.isArray(t)) {
+      const pick = await vscode.window.showQuickPick(
+        t.map((term) => {
+          const c = getTerminalCwd(term);
+          return { label: term.name, description: c ? shortHome(c.fsPath) : 'no cwd', terminal: term };
+        }),
+        { placeHolder: 'Which session?' }
+      );
+      t = pick && pick.terminal;
+    }
+    if (!t) { vscode.window.showInformationMessage('No session behind that tab.'); return; }
+    const cwd = getTerminalCwd(t);
+    if (!cwd) { vscode.window.showInformationMessage('No working directory available.'); return; }
+    vscode.commands.executeCommand('revealInExplorer', cwd);
   });
 
   reg('claudeHelper.revealActiveTerminalCwd', () => {
