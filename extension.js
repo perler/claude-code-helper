@@ -21,6 +21,7 @@ const {
   launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
 } = require('./lib/launch');
 const { AskViewProvider } = require('./lib/newtask');
+const { forgetMailAvailable } = require('./lib/mail');
 const { providers } = require('./lib/providers');
 const { sessionTerminals } = require('./lib/session-registry');
 const {
@@ -416,6 +417,7 @@ function activate(context) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration('claudeHelper')) return;
       forgetAsanaAvailable();
+      forgetMailAvailable();
       publishAvailability();
       askProvider.postAsanaState();
       favProvider.refresh(); termProvider.refresh(); sessProvider.refresh();

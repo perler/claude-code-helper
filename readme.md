@@ -19,7 +19,8 @@ Replaces the standalone `claude-favourites` and `terminal-tree` extensions.
 **Two of those are only there when the machine has the pieces they need.** The Agent
 Sessions panel appears when the Asana CLI (`claudeHelper.asanaCommand`) is installed or
 the bridge's index/history file exists. The queue buttons under the New Task box, and
-the "Open Asana Task" context-menu items, appear when that CLI is installed. On a
+the "Open Asana Task" context-menu items, appear when that CLI is installed; the ✉️ Mail
+button needs `claudeHelper.mailInboxCommand`. On a
 workstation without either, the Agent Sessions panel is gone, the New Task box keeps
 everything but its queue row, and nothing is spawned in the background. Everything else — favourites, terminals, recent sessions, bookmarks,
 Go to Folder, the tab badges — needs nothing beyond Claude Code itself.
@@ -92,18 +93,37 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.agentIndexPath` | `~/.claude/agent-sessions.json` | Index the Asana→Claude bridge writes; feeds Agent Sessions |
 | `claudeHelper.agentTmuxSocket` | `claude` | tmux socket (`-L`) the bridge's sessions use |
 | `claudeHelper.mailLookupCommand` | (site-specific) | Resolves an `email <subject>` New Task entry to the actual mail |
+| `claudeHelper.mailInboxCommand` | (site-specific) | Lists the inbox mail addressed to us; **absent means no ✉️ Mail button** |
 
-## The queue buttons under the New Task box
+## The buttons under the New Task box
 
-Only present when the Asana CLI is installed. Each button walks one queue; the number on
-it is a count of what is in that queue right now.
+📅 Today, ⏳ Input and 📁 walk an Asana queue and are only there when the Asana CLI is
+installed. ✉️ Mail opens the inbox and is only there when
+`claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
+what is in that queue, or that inbox, right now.
 
-The counts are cached on disk (`~/.cache/claude-code-helper/queue-counts.json`) so the
+The counts are cached on disk (`~/.cache/claude-code-helper/queue-counts.json`, and
+`mail-inbox.json` for the mail — which caches the whole list, so the number on the button
+and the rows in the picker come from the same read and cannot disagree) so the
 buttons paint instantly when a window opens, then refreshed behind that. While the panel
 is visible they refresh once a minute, and stop when it is not — the view is created with
 `retainContextWhenHidden`, so a sidebar left open on this container fires no visibility
 event and would otherwise sit on the count it read when the window loaded. The refresh
 button in the panel header forces a fetch, ignoring the two-minute cache window.
+
+### ✉️ Mail
+
+The mail Gmail holds for `@erler-edv-beratung.de` — everything in the inbox whose
+To/Cc/Delivered-To names that domain, newest first, unread marked with a dot. Two ways
+out of the picker:
+
+- **One mail** goes through the same routing as anything typed into the box: the sender
+  decides the client, and the session opens in that client's folder with the thread to
+  reply to. It is the `email <subject>` entry without the typing — and without the second
+  IMAP round trip, because the picker already holds the message.
+- **Triage all N** starts one session that reads every one of them and hands back a
+  numbered table with a proposed action per mail, then waits. Nothing is sent and no task
+  is created before you approve its row.
 
 ## Tab state decorations
 

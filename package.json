@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.42.2",
+  "version": "0.43.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -946,6 +946,11 @@
           "type": "string",
           "default": "~/projects/infra/email-automation/bin/mail-lookup.py",
           "description": "Script that resolves an `email <subject>` New Task entry to the actual inbox mail (sender, client, thread link), so the entry is routed to the sender's client and the session replies to the real thread. Prints JSON; empty = route on the typed words alone."
+        },
+        "claudeHelper.mailInboxCommand": {
+          "type": "string",
+          "default": "~/projects/infra/email-automation/bin/mail-inbox.py",
+          "description": "Script behind the \u2709\ufe0f Mail button: prints the inbox mail addressed to us as JSON (subject, sender, client, read state, thread link). Empty or missing = no Mail button."
         },
         "claudeHelper.clientsDir": {
           "type": "string",
