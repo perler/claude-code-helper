@@ -102,6 +102,12 @@ installed. ✉️ Mail opens the inbox and is only there when
 `claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
 what is in that queue, or that inbox, right now.
 
+Whatever a button starts is named after the button: the session's tab reads
+`✉️ invoice-question`, `📅 inbox-zero · Today`, `📁 inbox-zero · SFF EDV` — the icon
+first, so a strip of tabs says what each session is about before the words are read. An
+unnamed launch still swaps its timestamp for Claude's generated title once that lands,
+and keeps the icon in front of it.
+
 The counts are cached on disk (`~/.cache/claude-code-helper/queue-counts.json`, and
 `mail-inbox.json` for the mail — which caches the whole list, so the number on the button
 and the rows in the picker come from the same read and cannot disagree) so the
