@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.46.0",
+  "version": "0.47.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -792,6 +792,16 @@
           "type": "number",
           "default": 7,
           "description": "Only show sessions modified within the last N days in Recent Sessions."
+        },
+        "claudeHelper.sessionsExcludePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "/tmp"
+          ],
+          "description": "Hide sessions whose working directory is one of these paths or below it (throwaway scratchpad and temp-dir sessions). ~ is expanded."
         },
         "claudeHelper.sessionsMaxItems": {
           "type": "number",
