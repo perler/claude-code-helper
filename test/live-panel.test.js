@@ -17,7 +17,8 @@ const vscode = {
   Uri: class Uri {
     constructor(p) { this.scheme = 'file'; this.fsPath = p; }
     static file(p) { return new Uri(p); }
-    toString() { return 'file://' + this.fsPath; }
+    static from(o) { return Object.assign(new Uri(o.path), o); }
+    toString() { return this.scheme + ':' + (this.fsPath || this.path) + (this.query ? '?' + this.query : ''); }
   },
   EventEmitter: class {
     constructor() { this.event = () => ({ dispose() {} }); }
@@ -79,6 +80,36 @@ section('toolItem');
 
   const bare = live.toolItem({ name: 'Mystery', input: {} }, 't');
   ok('a tool with nothing to show still renders', bare.label === 'Mystery' && bare.text === '', JSON.stringify(bare));
+
+  const ided = live.toolItem({ name: 'Bash', id: 'toolu_1', input: { command: 'echo hi' } }, 't', 'u-1');
+  ok('a tool row carries the ids a record lookup needs',
+    ided.uuid === 'u-1' && ided.toolId === 'toolu_1', JSON.stringify(ided));
+}
+
+// ─── anchor: what "Find in terminal" can actually match ─────────────────────
+section('anchor');
+{
+  ok('an anchor is one line', live.anchor('first line\nsecond line') === 'first line');
+  ok('an anchor collapses whitespace', live.anchor('a   b\tc') === 'a b c');
+  ok('an anchor is short enough not to straddle a wrap',
+    live.anchor('x'.repeat(200)).length === 28, String(live.anchor('x'.repeat(200)).length));
+  ok('an anchor does not end mid-space', live.anchor('word '.repeat(20)) === live.anchor('word '.repeat(20)).trim());
+
+  // A Bash row is LABELLED with its description but the terminal prints the
+  // command, so the anchor has to come from the command.
+  const b = live.toolItem({ name: 'Bash', input: { command: 'grep -rn needle src/', description: 'Search for the needle' } }, 't', 'u');
+  ok('a Bash anchor is the command, not the description', b.anchor === 'grep -rn needle src/', b.anchor);
+}
+
+// ─── fence: a code block that cannot be broken by its own contents ──────────
+section('fence');
+{
+  ok('a plain body gets a three-backtick fence', live.fence('hi', 'sh') === '```sh\nhi\n```', JSON.stringify(live.fence('hi', 'sh')));
+  const withFence = live.fence('before\n```\nafter');
+  ok('a body containing a fence gets a longer one', withFence.startsWith('````\n') && withFence.endsWith('\n````'), JSON.stringify(withFence));
+  const withLong = live.fence('a ````` b');
+  ok('the fence always beats the longest run inside', withLong.startsWith('``````'), JSON.stringify(withLong.slice(0, 10)));
+  ok('trailing blank lines do not push the closing fence away', live.fence('x\n\n\n') === '```\nx\n```');
 }
 
 // ─── readActivity: a synthetic transcript with every record shape ────────────
@@ -129,6 +160,80 @@ section('readActivity');
     ok('every row has a kind and text', a.every((x) => x.kind && typeof x.text === 'string'));
     ok('tail-reading never returns a half-parsed row', a.every((x) => x.text !== undefined));
   }
+}
+
+// ─── renderRecord: the whole turn behind a one-line row ────────────────────
+section('renderRecord');
+{
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cch-live-'));
+  const f = path.join(dir, 's.jsonl');
+  const rec = (o) => JSON.stringify(o) + '\n';
+  fs.writeFileSync(f, [
+    rec({ type: 'user', uuid: 'u-prompt', timestamp: '2026-09-04T06:00:00.000Z', cwd: '/repo',
+          message: { content: 'do the thing' } }),
+    rec({ type: 'assistant', uuid: 'u-say', timestamp: '2026-09-04T06:00:01.000Z', cwd: '/repo',
+          message: { content: [{ type: 'text', text: 'On it.' }] } }),
+    rec({ type: 'assistant', uuid: 'u-tool', timestamp: '2026-09-04T06:00:02.000Z', cwd: '/repo', gitBranch: 'main',
+          message: { content: [{ type: 'tool_use', id: 'toolu_A', name: 'Bash',
+                                 input: { command: 'ls -la', description: 'List files' } }] } }),
+    // an attachment sits between the call and its result, as it does in real transcripts
+    rec({ type: 'attachment', uuid: 'u-att', attachment: { type: 'noise' } }),
+    rec({ type: 'user', uuid: 'u-res', message: { content: [
+      { type: 'tool_result', tool_use_id: 'toolu_A', content: 'total 0\ndrwx' }] } }),
+    rec({ type: 'assistant', uuid: 'u-tool2', timestamp: '2026-09-04T06:00:05.000Z', gitBranch: 'HEAD',
+          message: { content: [{ type: 'tool_use', id: 'toolu_B', name: 'Read',
+                                 input: { file_path: '/repo/a.js' } }] } }),
+    rec({ type: 'user', uuid: 'u-res2', message: { content: [
+      { type: 'tool_result', tool_use_id: 'toolu_B', is_error: true, content: [{ type: 'text', text: 'boom' }] }] } }),
+    rec({ type: 'assistant', uuid: 'u-pending', timestamp: '2026-09-04T06:00:09.000Z',
+          message: { content: [{ type: 'tool_use', id: 'toolu_C', name: 'Bash', input: { command: 'sleep 99' } }] } }),
+  ].join(''));
+
+  const prompt = live.renderRecord(f, 'u-prompt', null);
+  ok('a prompt renders under a You heading', prompt.startsWith('# You ·'), prompt.split('\n')[0]);
+  ok('a prompt renders its full text', prompt.includes('do the thing'));
+
+  const say = live.renderRecord(f, 'u-say', null);
+  ok('a reply renders under a Claude heading', say.startsWith('# Claude ·'), say.split('\n')[0]);
+  ok('a reply renders its text', say.includes('On it.'));
+
+  const bash = live.renderRecord(f, 'u-tool', 'toolu_A');
+  ok('a tool record is headed by the tool name', bash.startsWith('# Bash ·'), bash.split('\n')[0]);
+  ok('a tool record shows where it ran', bash.includes('/repo') && bash.includes('branch main'), bash);
+  ok('a Bash record fences its command', bash.includes('```sh\nls -la\n```'), bash);
+  ok('a Bash record keeps its description', bash.includes('_List files_'));
+  ok('a tool record carries its result past an intervening attachment',
+    bash.includes('## Result') && bash.includes('total 0'), bash);
+  ok('a successful result is not flagged as an error', !bash.includes('Result — error'));
+
+  const read = live.renderRecord(f, 'u-tool2', 'toolu_B');
+  ok('a non-Bash tool renders its input as json', read.includes('```json') && read.includes('"file_path"'), read);
+  ok('an errored result says so', read.includes('## Result — error'), read);
+  ok('a block-array result is flattened to text', read.includes('boom'), read);
+  // Outside a repository the CLI writes the branch as the literal "HEAD", which
+  // reads like a real branch name and says nothing.
+  ok('a detached "branch HEAD" is not printed as a branch', !read.includes('branch HEAD'), read);
+
+  const pending = live.renderRecord(f, 'u-pending', 'toolu_C');
+  ok('a call with no result yet says it is still running', pending.includes('Still running'), pending);
+
+  ok('an unknown record does not throw', live.renderRecord(f, 'nope', null).includes('no longer in the transcript window'));
+  ok('a missing file does not throw', typeof live.renderRecord(path.join(dir, 'gone.jsonl'), 'u-say', null) === 'string');
+  ok('no uuid, nothing to show', live.renderRecord(f, '', null) === 'Nothing to show.');
+
+  // The uri a click builds has to survive round-tripping through the provider.
+  const uri = live.recordUri(f, { uuid: 'u-tool', toolId: 'toolu_A', label: '$', ts: '2026-09-04T06:00:02.000Z' });
+  ok('the record uri names the transcript, the record and the tool',
+    uri.query.includes('uuid=u-tool') && uri.query.includes('tool=toolu_A') && uri.query.includes(encodeURIComponent(f)),
+    uri.query);
+  ok('the record uri has a readable filename', /\.md$/.test(uri.path), uri.path);
+  ok('the uri path is filesystem-safe', !/[^A-Za-z0-9/.\-]/.test(uri.path), uri.path);
+  // '$' is the Bash row's label and sanitises to nothing; the tab must still say Bash.
+  const bashUri = live.recordUri(f, live.toolItem({ name: 'Bash', id: 't1', input: { command: 'ls' } }, '2026-09-04T06:00:02.000Z', 'u-tool'));
+  ok('a Bash record tab is named after the tool, not its "$" label',
+    bashUri.path === '/Bash-060002.md', bashUri.path);
+  ok('a prompt record tab says who said it',
+    live.recordUri(f, { uuid: 'u', kind: 'you', ts: '2026-09-04T06:00:00.000Z' }).path === '/You-060000.md');
 }
 
 // ─── touchedFromTranscript ──────────────────────────────────────────────────

@@ -187,7 +187,35 @@ terminal around 100 columns.
   rather than the Edit tool, so the transcript's own file-history records see a fraction of
   them. A working directory that is not a repository falls back to those records.
 - **Activity** — newest first: your prompts, Claude's replies, and one row per tool call
-  (a Bash call shows its description, a file tool its basename — click to open it).
+  (a Bash call shows its description, a file tool its basename). Clicking a row opens **that
+  whole turn** in a read-only tab beside the terminal: the full command or arguments and the
+  untruncated result. That is more than the terminal keeps — the TUI collapses tool output to
+  `+129 lines (ctrl+o to expand)`, and once a turn has scrolled off you are reading a
+  shortened copy of something the transcript still holds in full. Hovering a row also offers
+  **⌕ Find in terminal** and, for a file tool, **↗** to open the file.
+
+### Why ⌕ needs two keystrokes
+
+There is no way to jump the terminal to a line, and it is not for want of trying: an extension
+gets a `Terminal` whose `selection` is a getter with no setter, no access to the buffer and no
+scroll-to-position, and `workbench.action.terminal.focusFind` is registered as
+`run: (a, o, e) => findWidget.reveal()` — it takes no search term, and the find box seeds only
+from a selection we cannot set. Counting `scrollUp` calls is no better: the TUI repaints, so a
+transcript record maps to no fixed number of emitted lines.
+
+So ⌕ does the reachable part: it copies a short anchor to the clipboard, focuses the session's
+terminal and opens its find box. You press `Ctrl+V` then `Enter`; the status bar says so and
+the button's tooltip shows exactly what will be searched. The anchor comes from what the
+terminal PRINTS rather than what the row shows — a Bash row is labelled with its description
+while the TUI prints `Bash(<command>…)`, so the anchor is the command — and it is capped at 28
+characters, because the TUI truncates long lines and a longer needle finds nothing.
+
+This only works at all because sessions here run under `dtach`. Under tmux the TUI sits on the
+alternate screen, the terminal has no scrollback, and there would be nothing to find.
+
+The lists hold still while the pointer is over them. A working session repaints the panel every
+two seconds, and without that a row — and the hover button you were aiming at — can be rebuilt
+between the aim and the click.
 
 Which session a terminal is showing is worked out in four steps, each weaker than the last:
 the session id this window recorded when it launched or attached the terminal; the id on the

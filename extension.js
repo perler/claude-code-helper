@@ -20,7 +20,7 @@ const { currentFolderSearch, goToFolder } = require('./lib/folder-search');
 const {
   launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, repairTabNames, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
 } = require('./lib/launch');
-const { livePanelFollow, showLivePanel } = require('./lib/livepanel');
+const { livePanelFollow, registerLiveRecordProvider, showLivePanel } = require('./lib/livepanel');
 const { AskViewProvider } = require('./lib/newtask');
 const { forgetMailAvailable } = require('./lib/mail');
 const { providers } = require('./lib/providers');
@@ -380,6 +380,7 @@ function activate(context) {
   });
 
   reg('claudeHelper.showLiveSession', () => showLivePanel());
+  registerLiveRecordProvider(context);   // serves the read-only `claude-live:` turn documents
 
   reg('claudeHelper.revealActiveTerminalCwd', () => {
     const t = vscode.window.activeTerminal;
