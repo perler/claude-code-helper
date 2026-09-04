@@ -18,7 +18,7 @@ const {
 } = require('./lib/favourites');
 const { currentFolderSearch, goToFolder } = require('./lib/folder-search');
 const {
-  launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
+  launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, repairTabNames, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
 } = require('./lib/launch');
 const { AskViewProvider } = require('./lib/newtask');
 const { forgetMailAvailable } = require('./lib/mail');
@@ -83,6 +83,11 @@ function activate(context) {
   );
   startTabStateWatcher(context);
   setTimeout(tabStateSweepStale, 5000);
+  // A window reload hands every restored terminal back with only the first word of
+  // its name (see repairTabNames). Put the recorded names back — repeatedly, because
+  // a tab is only identifiable once its shell's pid has been resolved, which lands
+  // seconds after activation and later still for a session that is mid-launch.
+  for (const ms of [4000, 12000, 30000]) setTimeout(() => { repairTabNames(); }, ms);
   const askProvider = new AskViewProvider();
   context.subscriptions.push(vscode.window.registerWebviewViewProvider(
     'claudeHelper.ask', askProvider, { webviewOptions: { retainContextWhenHidden: true } }

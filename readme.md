@@ -93,8 +93,11 @@ highlighted row. Uses `fd` (or
 
 ## The buttons under the New Task box
 
-📅 Today, ⏳ Input and 📁 walk an Asana queue and are only there when the Asana CLI is
-installed. ✉️ Mail opens the inbox and is only there when
+📅 Today, ⏳ Input, 📥 Both and 📁 walk an Asana queue and are only there when the Asana
+CLI is installed. 📥 Both walks Today and ⏳ Input as ONE queue: the two filter on
+different axes — Today on assignee and due date, Input on the Priority field — so a task
+that is both sits in both, and `asana queue today+input` merges them so it is walked
+once. ✉️ Mail opens the inbox and is only there when
 `claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
 what is in that queue, or that inbox, right now.
 
@@ -103,6 +106,14 @@ Whatever a button starts is named after the button: the session's tab reads
 first, so a strip of tabs says what each session is about before the words are read. An
 unnamed launch still swaps its timestamp for Claude's generated title once that lands,
 and keeps the icon in front of it.
+
+A reloaded window hands every restored terminal back with only the FIRST WORD of its
+name — `📅 inbox-zero · Today` comes back as `📅` — because VS Code re-derives a
+reconnected terminal's title and the name it was created with does not survive. Every
+name this extension sets is therefore written to
+`~/.cache/claude-code-helper/tab-names.json`, keyed by the tab id the session carries in
+its environment, and put back a few seconds after the window comes up. Only a name that
+came back truncated is repaired, so a tab renamed by hand keeps the hand-typed name.
 
 The counts are cached on disk (`~/.cache/claude-code-helper/queue-counts.json`, and
 `mail-inbox.json` for the mail — which caches the whole list, so the number on the button
