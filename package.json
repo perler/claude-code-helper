@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.48.1",
+  "version": "0.48.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -333,6 +333,12 @@
         "title": "Edit Bookmarks File",
         "icon": "$(json)",
         "category": "Claude Code Helper"
+      },
+      {
+        "command": "claudeHelper.showLiveSession",
+        "title": "Show Live Session Panel",
+        "icon": "$(pulse)",
+        "category": "Claude Code Helper"
       }
     ],
     "menus": {
@@ -648,6 +654,11 @@
           "command": "claudeHelper.openTabTask",
           "when": "resourceScheme == vscode-terminal && claudeHelper.asanaAvailable",
           "group": "2_files@2"
+        },
+        {
+          "command": "claudeHelper.showLiveSession",
+          "when": "resourceScheme == vscode-terminal && config.claudeHelper.livePanel",
+          "group": "2_files@0"
         }
       ],
       "terminal/title/context": [
@@ -659,6 +670,18 @@
           "command": "claudeHelper.openTabTask",
           "when": "claudeHelper.asanaAvailable",
           "group": "2_files@2"
+        },
+        {
+          "command": "claudeHelper.showLiveSession",
+          "when": "config.claudeHelper.livePanel",
+          "group": "2_files@0"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "claudeHelper.showLiveSession",
+          "when": "resourceScheme == vscode-terminal && config.claudeHelper.livePanel",
+          "group": "navigation@0"
         }
       ]
     },
@@ -882,6 +905,11 @@
           "type": "string",
           "default": "~/projects",
           "description": "Root scanned for project folders a New Task question can be scoped to."
+        },
+        "claudeHelper.livePanel": {
+          "type": "boolean",
+          "default": true,
+          "description": "Offer the Live Session panel — a column beside a session's terminal showing its status, the files it changed and what it just did. Opening it also narrows the terminal, which is the point on a wide screen. Set to false to hide the button and the command."
         },
         "claudeHelper.tabStateDecorations": {
           "type": "boolean",

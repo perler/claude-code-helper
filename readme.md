@@ -12,6 +12,8 @@ A sidebar for running Claude Code out of VS Code / code-server. Five panels:
    with resume.
 5. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
 
+Plus a **Live Session** panel that opens beside a session's terminal — see below.
+
 Replaces the standalone `claude-favourites` and `terminal-tree` extensions.
 
 **One of those is only there when the machine has the pieces it needs.** The Agent
@@ -71,6 +73,7 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.folderSearchDepth` | `3` | Levels below each root to descend |
 | `claudeHelper.folderSearchExcludes` | `node_modules .git venv .venv dist build __pycache__` | Directory names skipped |
 | `claudeHelper.folderSearchAction` | `reveal` | What Enter does in Go to Folder… |
+| `claudeHelper.livePanel` | `true` | Offer the Live Session panel (the pulse button on a session tab, and the command). `false` hides both |
 | `claudeHelper.tabStateDecorations` | `true` | Show working/waiting/idle badges on Claude terminal tabs (needs the hook below) |
 | `claudeHelper.tabStateTrace` | `false` | Log each tab's computed badge to `~/.cache/claude-tab-state.exttrace` |
 | `claudeHelper.sessionsMaxAgeDays` | `7` | Recent Sessions only lists sessions touched in the last N days |
@@ -164,6 +167,40 @@ the usable half: it finds the Tab, and the Tab's label is matched against the op
 names. When two sessions carry the same name in different folders the match cannot decide, so
 it asks with a picker rather than falling back to the active tab, which is what a silent
 fallback did in testing — it revealed the wrong folder.
+
+## Live Session panel
+
+A column beside a session's terminal showing what that session is doing: its status, the files
+it has changed, and the last sixty things it did. Open it with **Show Live Session Panel** —
+the pulse button on a Claude session's editor tab, its right-click menu, or the command palette.
+It opens in the editor group to the right and follows whichever session terminal you focus.
+
+Opening it is also what narrows the terminal, which on a wide screen is half the point: a
+Claude TUI given a full 4K editor area wraps at ~143 columns, and reading that is a head turn
+per line. On a 1920-wide layout with the Explorer and the sidebar open, the panel leaves the
+terminal around 100 columns.
+
+- **Changes** — `git status` in the session's working directory, with the line counts from
+  `git diff --numstat HEAD`. Clicking a row opens the diff against HEAD in the terminal's own
+  group, never over the panel. Deliberately git and not the transcript: under
+  `--dangerously-skip-permissions` most edits are made with `sed` and heredocs through Bash
+  rather than the Edit tool, so the transcript's own file-history records see a fraction of
+  them. A working directory that is not a repository falls back to those records.
+- **Activity** — newest first: your prompts, Claude's replies, and one row per tool call
+  (a Bash call shows its description, a file tool its basename — click to open it).
+
+Which session a terminal is showing is worked out in four steps, each weaker than the last:
+the session id this window recorded when it launched or attached the terminal; the id on the
+`dtach` client's command line, which is what survives a window reload; the single live session
+in the terminal's working directory; and finally the newest transcript in that directory. The
+third step ignores the session the Claude Code sidebar opens in every window
+(`entrypoint: "claude-vscode"`), which has no terminal and would otherwise make almost every
+folder look ambiguous. With two real sessions in one folder it gives up and shows nothing — a
+panel pointing at the wrong session is worse than a blank one.
+
+Everything it reads is written by the CLI anyway (`~/.claude/sessions/<pid>.json` and the
+transcript) and it writes nothing. Set `claudeHelper.livePanel` to `false` to hide the button
+and the command.
 
 ## Tab state decorations
 
