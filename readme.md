@@ -107,13 +107,17 @@ first, so a strip of tabs says what each session is about before the words are r
 unnamed launch still swaps its timestamp for Claude's generated title once that lands,
 and keeps the icon in front of it.
 
-A reloaded window hands every restored terminal back with only the FIRST WORD of its
-name — `📅 inbox-zero · Today` comes back as `📅` — because VS Code re-derives a
-reconnected terminal's title and the name it was created with does not survive. Every
-name this extension sets is therefore written to
+A reloaded window loses the names: VS Code re-derives a reconnected terminal's title
+from `terminal.integrated.tabs.title` and the name it was created with does not survive.
+What you get instead depends on how far its cwd detection has got — the same
+`📅 inbox-zero · Today` tab came back as `📅` after one reload and as `work` (the folder
+of a session running in `~`, under the default `${cwdFolder}` template) after the next.
+So every name this extension sets is written to
 `~/.cache/claude-code-helper/tab-names.json`, keyed by the tab id the session carries in
-its environment, and put back a few seconds after the window comes up. Only a name that
-came back truncated is repaired, so a tab renamed by hand keeps the hand-typed name.
+its environment, and put back 4, 12 and 30 seconds after the window comes up — three
+passes because a tab is only identifiable once its shell's pid has been resolved. Each
+terminal is repaired at most once per window, so a tab you rename by hand afterwards
+keeps the name you typed.
 
 The counts are cached on disk (`~/.cache/claude-code-helper/queue-counts.json`, and
 `mail-inbox.json` for the mail — which caches the whole list, so the number on the button
