@@ -29,6 +29,7 @@ const {
   SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, setHiddenSessions,
 } = require('./lib/sessions');
 const { cfg, dtachSocketDir, shortHome } = require('./lib/shared');
+const { startTabLabelWatcher } = require('./lib/tablabels');
 const {
   createTabStateProvider, startTabStateWatcher, tabStateSeedTerminals, tabStateSweepStale, tabStateTerminalClosed, tabStateTerminalFocused, tabStateTerminalOpened,
 } = require('./lib/tabstate');
@@ -84,6 +85,10 @@ function activate(context) {
   );
   startTabStateWatcher(context);
   setTimeout(tabStateSweepStale, 5000);
+  // Watches ~/.cache/claude-code-helper/tab-labels/ for a shell script relabelling
+  // a live tab from outside the extension entirely — see lib/tablabels.js and
+  // readme.md "External tab labels".
+  startTabLabelWatcher(context);
   // A window reload hands every restored terminal back with only the first word of
   // its name (see repairTabNames). Put the recorded names back — repeatedly, because
   // a tab is only identifiable once its shell's pid has been resolved, which lands

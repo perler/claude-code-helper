@@ -351,6 +351,42 @@ that key when **exactly one** terminal in the window sits in that directory; wit
 on the same folder the key cannot say which tab is which, so neither gets a badge. Freshly launched
 sessions always use the exact uuid and are never affected by that.
 
+## External tab labels
+
+Everything above only ever puts a tab's OWN name back after a reload. This is a separate channel
+for something outside the extension entirely — a shell script — to rename a live tab.
+
+The extension watches `~/.cache/claude-code-helper/tab-labels/`, one file per tab, and reacts
+within a couple of seconds:
+
+- **Create or overwrite `tab-labels/<key>` with the label text** (plain UTF-8, one line) and the
+  matching tab is renamed to it.
+- **Delete `tab-labels/<key>`** and the tab goes back to whatever it was called before the first
+  label ever touched it.
+
+File presence is the whole protocol — there is no command, no socket, nothing else to call.
+
+`<key>` is the same tab id the badges use: the `CCH_TAB_ID` uuid that was put into the session's
+environment at launch (`echo $CCH_TAB_ID` inside the session's own shell), or, for a session
+that predates `CCH_TAB_ID` and only has the cwd-hash fallback, `cwd-<sha1 of its working
+directory>` — see "Sessions that predate `CCH_TAB_ID`" just above for when that applies and its one
+caveat (only trusted with exactly one terminal in that directory). A script driving a specific
+session it just launched should read `CCH_TAB_ID` out of that session's own environment rather than
+recomputing the hash itself.
+
+The label is sanitized exactly the way a rename from inside the extension is: runs of whitespace
+collapse to one space, the ends are trimmed, and it's capped at 60 characters. A file that is empty
+or holds only whitespace counts as no label at all, not a rename to blank. The rename itself goes
+through the same `renameTerminalTab()` every other renamer in this extension uses, so it carries
+the same active-terminal wait and gets recorded into the reload-survival name file
+(`tab-names.json`) like any other rename would.
+
+Labels for tabs that are currently overridden are tracked in
+`~/.cache/claude-code-helper/tab-label-bases.json` (the name each tab had before its first label,
+so the file can be removed later and get that name back) — this file persists across a window
+reload and is pruned the same way `tab-names.json` is, after 14 days. It is written only by the
+extension; a script never touches it directly.
+
 **Survives a window reload.** A dtach-mode (or plain internal-terminal-mode) terminal is the same
 live OS process before and after a code-server window reload — VS Code just reconnects its pty,
 it never re-runs the launch code — so its shell's original environment, `CCH_TAB_ID` included, is
