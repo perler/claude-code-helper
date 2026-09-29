@@ -59,7 +59,13 @@ const launches = [];
 const origLoad = Module._load;
 Module._load = function (req, parent, isMain) {
   if (req === 'vscode') return vscode;
-  if (req === './launch') return { launchClaude: async (fav, resume, opts) => { launches.push({ dir: fav.path, label: fav.label, resume, ...opts }); return {}; } };
+  // Each fake terminal's shell comes up 50 ms after its launch; `ready` records that, so
+  // the test can see whether the next tab waited for it.
+  if (req === './launch') return { launchClaude: async (fav, resume, opts) => {
+    const l = { dir: fav.path, label: fav.label, resume, ...opts, ready: false, prevReady: launches.length ? launches[launches.length - 1].ready : true };
+    launches.push(l);
+    return { processId: new Promise((r) => setTimeout(() => { l.ready = true; r(4242); }, 50)) };
+  } };
   return origLoad.apply(this, arguments);
 };
 const asana = require('../lib/asana');
@@ -89,6 +95,7 @@ function check(name, cond, detail) {
   check('task already stamped with its gid reuses its folder', b && b.dir === path.join(clients, 'RAH', 'old-work'), b && b.dir);
   check('rest-walk skips exactly the ticked gids', rest && rest.initialPrompt === '/inbox-zero today+input skip 1218000000111,1218000000222', rest && rest.initialPrompt);
   check('rest-walk runs in home', rest && rest.dir === tmp, rest && rest.dir);
+  check('each tab opens only once the previous one has its shell', launches.every((l) => l.prevReady), launches.map((l) => l.prevReady));
 
   // 2. Enter on the untouched list = the old full walk.
   answer = (_items, sel) => sel;
