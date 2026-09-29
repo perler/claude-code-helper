@@ -104,6 +104,14 @@ once. ✉️ Mail opens the inbox and is only there when
 `claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
 what is in that queue, or that inbox, right now.
 
+📅, ⏳ and 📥 open their queue as a checklist first. Tick the tasks you want to work on
+in their own tab: each one opens a session in its own folder (the folder already stamped
+with its gid when it has one, otherwise a new one under its client, and a folder picker
+when its project names no client), with a 📌 in front of the tab name. The first row,
+**Walk the rest in one inbox-zero session**, is ticked already. It starts the usual
+walkthrough with `skip <gids>` appended, so a task that got its own tab is never walked as
+well. Enter on the untouched list is the plain full walk, as before; Esc starts nothing.
+
 Whatever a button starts is named after the button: the session's tab reads
 `✉️ invoice-question`, `📅 inbox-zero · Today`, `📁 inbox-zero · SFF EDV` — the icon
 first, so a strip of tabs says what each session is about before the words are read. An
