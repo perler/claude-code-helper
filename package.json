@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.53.0",
+  "version": "0.53.1",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -368,6 +368,12 @@
         "title": "Show Live Session Panel",
         "icon": "$(pulse)",
         "category": "Claude Code Helper"
+      },
+      {
+        "command": "claudeHelper.showHelp",
+        "title": "Help: Queue, Badges, Unlock",
+        "icon": "$(question)",
+        "category": "Claude Code Helper"
       }
     ],
     "menus": {
@@ -457,6 +463,11 @@
           "command": "claudeHelper.openBookmarksFile",
           "when": "view == claudeHelper.bookmarks",
           "group": "1_ops@1"
+        },
+        {
+          "command": "claudeHelper.showHelp",
+          "when": "view == claudeHelper.ask",
+          "group": "navigation@9"
         }
       ],
       "view/item/context": [

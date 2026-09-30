@@ -147,6 +147,8 @@ function activate(context) {
   reg('claudeHelper.openQueueTask', (row) => openQueueTask(row));
   reg('claudeHelper.removeQueueRow', (row) => removeQueueRow(row));
   reg('claudeHelper.clearFinishedQueue', () => clearFinishedQueue());
+  reg('claudeHelper.showHelp', () => vscode.commands.executeCommand(
+    'markdown.showPreview', vscode.Uri.file(path.join(context.extensionPath, 'HELP.md'))));
 
   // favourites commands
   reg('claudeHelper.refreshFavourites', () => favProvider.refresh());
