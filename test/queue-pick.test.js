@@ -5,7 +5,9 @@
 //
 // What it pins down: a ticked task opens in its client's folder (the one stamped with
 // its gid when there is one), the rest-walk skips exactly the ticked gids, Enter on the
-// untouched list is the old full walk, and Esc starts nothing.
+// untouched list is the old full walk, and Esc starts nothing. That is the visible-tab
+// mode (no dtach); with the tab-less mode every task is pre-ticked and goes to the
+// Queue view instead of a tab, and the rest-walk row is the one that starts unticked.
 //
 // Run: node test/queue-pick.test.js
 const fs = require('fs'), path = require('path'), os = require('os'), Module = require('module');
@@ -56,12 +58,15 @@ const vscode = {
   },
 };
 const launches = [];
+let tabless = false;
+const queued = [];   // what the (stubbed) Queue view was handed, one array of gids per call
 const origLoad = Module._load;
 Module._load = function (req, parent, isMain) {
   if (req === 'vscode') return vscode;
   // Each fake terminal's shell comes up 50 ms after its launch; `ready` records that, so
   // the test can see whether the next tab waited for it.
-  if (req === './launch') return { launchClaude: async (fav, resume, opts) => {
+  if (req === './queue') return { addTasks: (tasks) => { queued.push(tasks.map((t) => t.gid)); return tasks.length; }, setQueueHooks: () => {} };
+  if (req === './launch') return { tablessAvailable: () => tabless, startDtachMaster: async () => { throw new Error('unexpected tabless launch'); }, launchClaude: async (fav, resume, opts) => {
     const l = { dir: fav.path, label: fav.label, resume, ...opts, ready: false, prevReady: launches.length ? launches[launches.length - 1].ready : true };
     launches.push(l);
     return { processId: new Promise((r) => setTimeout(() => { l.ready = true; r(4242); }, 50)) };
@@ -114,6 +119,29 @@ function check(name, cond, detail) {
   launches.length = 0;
   await nt.pickFromQueue('today');
   check('rest-walk unticked = only the task tab', launches.length === 1 && launches[0].namePrefix === '📌 ', launches);
+
+  // 5. Tab-less mode: everything pre-ticked, the rest-walk row is not.
+  tabless = true;
+  let seen;
+  answer = (items, sel) => { seen = { items, sel: sel.slice() }; return sel; };
+  launches.length = 0; queued.length = 0;
+  check('tab-less: Enter on the untouched list queues every task', await nt.pickFromQueue('today+input') && queued.length === 1
+    && queued[0].join() === '1218000000111,1218000000222,1218000000333', queued);
+  check('tab-less: all tasks pre-ticked, rest row is not', seen.sel.length === 3 && seen.sel.every((i) => i.task) && !seen.sel.some((i) => i.rest), seen.sel.map((i) => i.label));
+  check('tab-less: untouched Enter opens no tab and no walk', launches.length === 0, launches);
+
+  // Untick one, tick the rest-walk row: two queued, the walk skips exactly those two.
+  answer = (items, sel) => [...sel.filter((i) => i.task && i.task.gid !== '1218000000333'), items.find((i) => i.rest)];
+  launches.length = 0; queued.length = 0;
+  await nt.pickFromQueue('today+input');
+  check('tab-less: unticked task is not queued', queued.length === 1 && queued[0].join() === '1218000000111,1218000000222', queued);
+  check('tab-less: rest-walk skips exactly the queued gids', launches.length === 1 && launches[0].initialPrompt === '/inbox-zero today+input skip 1218000000111,1218000000222', launches);
+
+  // Only the rest-walk row ticked: the old full walk, nothing queued.
+  answer = (items) => [items.find((i) => i.rest)];
+  launches.length = 0; queued.length = 0;
+  await nt.pickFromQueue('input');
+  check('tab-less: only the walk ticked = full walk, nothing queued', queued.length === 0 && launches.length === 1 && launches[0].initialPrompt === '/inbox-zero input', { queued, launches });
 
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(failed ? `${failed} failed` : 'all passed');

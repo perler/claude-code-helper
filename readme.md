@@ -1,16 +1,18 @@
 # Claude Code Helper
 
-A sidebar for running Claude Code out of VS Code / code-server. Five panels:
+A sidebar for running Claude Code out of VS Code / code-server. Six panels:
 
 1. **New Task** — a text box that starts a session. It works out where the work belongs
    (a client, a project, or a fresh scratch folder), names the session and opens it.
-2. **Favourites** — bookmarked directories; start or resume a session in one click.
+2. **Queue** — one row per task a queue button started as a background session, with its
+   state. Only there when the Asana CLI is installed; see "The Queue view" below.
+3. **Favourites** — bookmarked directories; start or resume a session in one click.
    Resuming a folder with several sessions opens a picker.
-3. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
+4. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
    attach, resume and kill.
-4. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
+5. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
    with resume.
-5. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
+6. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
 
 Plus a **Live Session** panel that opens beside a session's terminal — see below.
 
@@ -104,13 +106,60 @@ once. ✉️ Mail opens the inbox and is only there when
 `claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
 what is in that queue, or that inbox, right now.
 
-📅, ⏳ and 📥 open their queue as a checklist first. Tick the tasks you want to work on
-in their own tab: each one opens a session in its own folder (the folder already stamped
-with its gid when it has one, otherwise a new one under its client, and a folder picker
-when its project names no client), with a 📌 in front of the tab name. The first row,
-**Walk the rest in one inbox-zero session**, is ticked already. It starts the usual
-walkthrough with `skip <gids>` appended, so a task that got its own tab is never walked as
-well. Enter on the untouched list is the plain full walk, as before; Esc starts nothing.
+📅, ⏳ and 📥 open their queue as a checklist first. Every task is ticked to begin with,
+and a ticked task gets a Claude session of its own, in its own folder (the folder already
+stamped with its gid when it has one, otherwise a new one under its client). Untick the
+ones that should not. The first row, **Walk the rest in one inbox-zero session**, is not
+ticked; when you tick it, the unticked tasks go through the usual walkthrough with
+`skip <gids>` appended, so a task that got its own session is never walked as well. Enter
+on the untouched list gives every task its own session and starts no walkthrough; Esc
+starts nothing. A task that already has a row in the Queue view with a live session is not
+started a second time.
+
+The task sessions run **without a terminal tab** (see below), so thirty tasks do not put
+thirty tabs in front of you. Each is told to check first whether its task is still real —
+answered since, fixed since, stale — and if it can simply be closed, to say so and ask
+before doing anything else. When the dtach mode is off (`claudeHelper.useTmux` on,
+`claudeHelper.useDtach` off, or the terminal mode not `internal`) there is no such thing as
+a session without a tab, and the checklist works as it used to: tick the tasks that get a
+tab, with a 📌 in front of its name, and the walkthrough row is ticked already.
+
+## The Queue view
+
+The **Queue** panel sits under New Task. One row per task, the task's name as the label
+and the state plus the session's folder as the description, sorted by what needs you:
+`? asking` (the session is asking you something), `! finished` (a turn ended and you have
+not looked), `needs folder`, `* working`, `queued`, then `seen` and `ended`. The state comes
+from the same two sources as the tab badges — the hook's state file per `CCH_TAB_ID` and
+the CLI's own live session files — plus two states only the panel knows: `queued` (not
+started yet) and `ended` (the process is gone). The panel repaints on the tab-state
+refresh, so it costs no polling loop of its own. The number on the panel's badge is the
+rows asking or finished and unread.
+
+At most **five sessions work at once** (a constant, `MAX_WORKING` in `lib/queue.js`, not a
+setting). The rest are `queued` and start in queue order as soon as a running one asks,
+finishes or dies. A task's folder is worked out when it starts. One the routing table
+cannot place (its project names no client) does not stop the queue: the row reads
+`needs folder`, and clicking it asks for the folder, after which it starts as soon as a slot
+is free. A folder that already holds a session for the task resumes it, with no tab too.
+
+A session started this way is only the dtach master that `claudeHelper.useDtach` already
+uses, started from the extension host with the same claude.slice scope and memory limits,
+the same runner script and claude flags, and `CCH_TAB_ID` in its environment, so the hooks
+keep writing the tab-state file. Clicking a row attaches a terminal tab to that session's
+socket (`📌 <folder>`, the same attach line as everywhere else, drain relay included) or
+shows the tab that is already attached. Closing the tab leaves the session running, as
+closing any dtach attach does. A row that is `ended` cannot be attached; resume its
+folder from Recent Sessions.
+
+Row actions: the link button opens the Asana task; the close button removes the row, and
+asks first when its session is still alive, offering to remove it while it keeps running
+or to kill it too. **Clear Finished** in the panel header removes every `ended` row.
+Rows are kept in `~/.cache/claude-code-helper/queue.json`, one file shared by every window,
+so all windows show the same list and a window reload leaves it as it was: sessions that are
+still running come back with their real state, and rows that were still queued start again.
+Starting a row is a claim written to that file, so two windows never start the same task; a
+claim whose window went away before a session came up returns to `queued` after 45 seconds.
 
 Whatever a button starts is named after the button: the session's tab reads
 `✉️ invoice-question`, `📅 inbox-zero · Today`, `📁 inbox-zero · SFF EDV` — the icon

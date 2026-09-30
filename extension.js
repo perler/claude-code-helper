@@ -24,6 +24,9 @@ const { livePanelFollow, registerLiveRecordProvider, showLivePanel } = require('
 const { AskViewProvider } = require('./lib/newtask');
 const { forgetMailAvailable } = require('./lib/mail');
 const { providers } = require('./lib/providers');
+const {
+  clearFinishedQueue, initQueue, openQueueSession, openQueueTask, removeQueueRow,
+} = require('./lib/queue');
 const { sessionTerminals } = require('./lib/session-registry');
 const {
   SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, setHiddenSessions,
@@ -100,6 +103,14 @@ function activate(context) {
   ));
   refreshAsanaProjects(12);   // warm the New Task routing table; never blocks a submit
 
+  // The Queue view: one row per task a queue button started as a tab-less session.
+  const queueProvider = initQueue();
+  const queueView = vscode.window.createTreeView('claudeHelper.queue', {
+    treeDataProvider: queueProvider, showCollapseAll: false,
+  });
+  queueProvider.view = queueView;
+  context.subscriptions.push(queueView);
+
   favProvider = new FavouritesProvider(context);
   setFavProvider(favProvider);
   const favView = vscode.window.createTreeView('claudeHelper.favourites', {
@@ -132,6 +143,10 @@ function activate(context) {
 
   const reg = (id, fn) => context.subscriptions.push(vscode.commands.registerCommand(id, fn));
   reg('claudeHelper.refreshQueueCounts', () => askProvider.refreshCounts());
+  reg('claudeHelper.openQueueSession', (row) => openQueueSession(row));
+  reg('claudeHelper.openQueueTask', (row) => openQueueTask(row));
+  reg('claudeHelper.removeQueueRow', (row) => removeQueueRow(row));
+  reg('claudeHelper.clearFinishedQueue', () => clearFinishedQueue());
 
   // favourites commands
   reg('claudeHelper.refreshFavourites', () => favProvider.refresh());
