@@ -148,8 +148,11 @@ uses, started from the extension host with the same claude.slice scope and memor
 the same runner script and claude flags, and `CCH_TAB_ID` in its environment, so the hooks
 keep writing the tab-state file. Clicking a row attaches a terminal tab to that session's
 socket (`📌 <folder>`, the same attach line as everywhere else, drain relay included) or
-shows the tab that is already attached. Closing the tab leaves the session running, as
-closing any dtach attach does. A row that is `ended` cannot be attached; resume its
+shows the tab that is already attached. Closing the tab of a working or asking session leaves it
+running, as closing any dtach attach does. Closing the tab of a session that sits idle after
+a finished turn (`! finished` or `seen`) ends that session and removes its row; only a close
+by the user counts, never the terminal teardown of a window reload. Removing a row with its
+session closes its tab too. A row that is `ended` cannot be attached; resume its
 folder from Recent Sessions.
 
 Row actions: the link button opens the Asana task; the close button removes the row, and

@@ -224,6 +224,10 @@ const hookWord = (row, word) => fs.writeFileSync(path.join(stateDir, row.tabId),
   check('and leaves no row behind', rowsNow().length === 0, rowsNow());
   require('child_process').spawnSync = realSpawn;
 
+  // Closing a tab ends the row only for a session idle after a finished turn.
+  check('a closed tab ends a finished or seen row', q.endsWithTab('finished') && q.endsWithTab('seen'));
+  check('and never a working, asking or queued one', !['working', 'asking', 'queued', 'needsFolder', 'ended'].some(q.endsWithTab));
+
   fs.rmSync(HOME, { recursive: true, force: true });
   console.log(failed ? `${failed} failed` : 'all passed');
   process.exit(failed ? 1 : 0);

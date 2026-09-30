@@ -14,7 +14,7 @@ A queue button opens a checklist with every task ticked. Enter starts each ticke
 
 ## 2. Queue view
 
-One row per task. Click a row to attach a tab to its session. Closing the tab leaves the session running.
+One row per task. Click a row to attach a tab to its session. Closing the tab of a working or asking session leaves it running. Closing the tab of a finished session ends it and removes its row; resume it from Recent Sessions if you need it again. The cross on a row closes its tab as well.
 
 | State | Meaning |
 |---|---|

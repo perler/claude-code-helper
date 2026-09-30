@@ -25,7 +25,7 @@ const { AskViewProvider } = require('./lib/newtask');
 const { forgetMailAvailable } = require('./lib/mail');
 const { providers } = require('./lib/providers');
 const {
-  clearFinishedQueue, initQueue, openQueueSession, openQueueTask, removeQueueRow,
+  clearFinishedQueue, initQueue, openQueueSession, openQueueTask, queueTerminalClosed, removeQueueRow,
 } = require('./lib/queue');
 const { sessionTerminals } = require('./lib/session-registry');
 const {
@@ -110,6 +110,7 @@ function activate(context) {
   });
   queueProvider.view = queueView;
   context.subscriptions.push(queueView);
+  context.subscriptions.push(vscode.window.onDidCloseTerminal((t) => queueTerminalClosed(t)));
 
   favProvider = new FavouritesProvider(context);
   setFavProvider(favProvider);
