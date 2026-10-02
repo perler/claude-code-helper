@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.56.1",
+  "version": "0.57.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -930,6 +930,17 @@
           "type": "string",
           "default": "~/.claude/dtach",
           "description": "Directory for per-session dtach sockets (used when useDtach is on)."
+        },
+        "claudeHelper.replayHistory": {
+          "type": "boolean",
+          "default": true,
+          "description": "dtach keeps no history, so a tab attached to a running session (and every Queue session, which starts without a tab) shows only one screenful. With this on, new sessions are recorded to <dtachSocketDir>/<session id>.log (via util-linux `script`) and the attach prints the tail of that log into the tab first, so you can scroll back through what you missed. Terminal queries are stripped from the replay. Off: no recording on new launches, plain attach."
+        },
+        "claudeHelper.replayHistoryBytes": {
+          "type": "number",
+          "default": 4194304,
+          "minimum": 65536,
+          "description": "How many bytes at the end of a session's log are replayed on attach (default 4 MB). Logs of running sessions are trimmed to this size once they pass twice of it."
         },
         "claudeHelper.scratchDir": {
           "type": "string",

@@ -18,7 +18,7 @@ const {
 } = require('./lib/favourites');
 const { currentFolderSearch, goToFolder } = require('./lib/folder-search');
 const {
-  launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, repairTabNames, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
+  launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, repairTabNames, sweepDtachLogs, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
 } = require('./lib/launch');
 const { livePanelFollow, registerLiveRecordProvider, showLivePanel } = require('./lib/livepanel');
 const { AskViewProvider } = require('./lib/newtask');
@@ -31,7 +31,7 @@ const { sessionTerminals } = require('./lib/session-registry');
 const {
   SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, setHiddenSessions,
 } = require('./lib/sessions');
-const { cfg, dtachSocketDir, shortHome } = require('./lib/shared');
+const { cfg, dtachSocketDir, removeDtachLog, shortHome } = require('./lib/shared');
 const { startTabLabelWatcher } = require('./lib/tablabels');
 const {
   createTabStateProvider, startTabStateWatcher, tabStateSeedTerminals, tabStateSweepStale, tabStateTerminalClosed, tabStateTerminalFocused, tabStateTerminalOpened,
@@ -348,6 +348,7 @@ function activate(context) {
       // both sides read as "dead".
       try { cp.spawnSync('pkill', ['-f', e.sessionId]); } catch {}
       try { fs.unlinkSync(path.join(dtachSocketDir(), e.sessionId + '.sock')); } catch {}
+      removeDtachLog(e.sessionId);
     }
     // Killed, not forgotten: the row stays as ⚫ ended and is still resumable from
     // its transcript. "Remove from List" is the gesture that drops it for good.
@@ -440,6 +441,10 @@ function activate(context) {
 
   // Sessions: light periodic refresh (every 60s) so relative times and new sessions
   // appear; also sweep for ended date-coded scratch folders to auto-rename them.
+  // Scrollback logs of dtach sessions: trim the live ones, delete the dead ones' (launch.js).
+  setTimeout(sweepDtachLogs, 5000);
+  const logTimer = setInterval(sweepDtachLogs, 5 * 60_000);
+  context.subscriptions.push({ dispose: () => clearInterval(logTimer) });
   const sessTimer = setInterval(() => { try { sweepScratchRenames(); } catch {} sessProvider.refresh(); }, 60_000);
   context.subscriptions.push({ dispose: () => clearInterval(sessTimer) });
   // Catch sessions that ended while this window was closed.

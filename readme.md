@@ -85,6 +85,8 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.useTmux` | `true` | Run sessions inside tmux, so they survive a reload and are reachable from Claude Mobile |
 | `claudeHelper.useDtach` | `true` | With `useTmux` off, run them inside dtach instead (this is what the tab badges need) |
 | `claudeHelper.dtachSocketDir` | `~/.claude/dtach` | Where the per-session dtach sockets live |
+| `claudeHelper.replayHistory` | `true` | Record new dtach sessions and replay the tail of the log into a tab on attach, so a tab (and every Queue session) has scrollback. Off: no recording, plain attach |
+| `claudeHelper.replayHistoryBytes` | `4194304` | How many bytes at the end of the log are replayed (logs are trimmed to this once they pass twice of it) |
 | `claudeHelper.bookmarksFile` | `` | Bookmarks JSON; empty means `~/.config/cc-bookmarks.json` |
 | `claudeHelper.clientsDir` | `~/clients` | Root of client folders the New Task box can route to |
 | `claudeHelper.projectsDir` | `~/projects` | Root of project folders the New Task box can route to |
@@ -95,6 +97,34 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.agentTmuxSocket` | `claude` | tmux socket (`-L`) the bridge's sessions use |
 | `claudeHelper.mailLookupCommand` | (site-specific) | Resolves an `email <subject>` New Task entry to the actual mail |
 | `claudeHelper.mailInboxCommand` | (site-specific) | Lists the inbox mail addressed to us; **absent means no ✉️ Mail button** |
+
+### Scrollback of a dtach session
+
+dtach keeps no history. A tab only has scrollback for output that arrived while it was
+attached; a fresh `dtach -a` gets just Claude's repaint, one screenful (measured: a tab
+attached from the start held all 150 lines, 31 KB; a fresh attach 313 bytes), and a Queue
+session, which starts without a tab, never has any. tmux would fix that, but its alternate
+screen kills native wheel-scroll and select/copy, which is why this extension left it.
+
+With `claudeHelper.replayHistory` on, the dtach master runs under util-linux `script`
+(`script -q -f -e -a -O <id>.log -c "bash <runner>"`), which logs all output next to the
+socket, and the attach line becomes `steal; replay; attach`: `lib/replay.js` prints the last
+`replayHistoryBytes` of the log into the tab, then `dtach -a` takes over. The replay starts on
+a line boundary and strips the terminal queries in the log (device attributes, cursor-position
+and mode queries, OSC colour queries, XTVERSION, XTGETTCAP, kitty keyboard query), whose
+answers the terminal would otherwise type into the shell or Claude's prompt. It ends with a
+screenful of newlines so the attach's clear (`ESC[H ESC[J`, visible screen only) lands below
+the history instead of on it. Sessions with no log (started before this version, the Asana
+bridge's) attach as before.
+
+The log is `<dtachSocketDir>/<session id>.log`, mode 600 (it holds the conversation). It is
+deleted when the session's socket is cleaned up, and a five-minute sweep deletes the logs of
+dead sessions and trims live ones: past twice the replay size the head is cut off in place with
+`fallocate --collapse-range`, safe under the running `script` because that writes with
+`O_APPEND`. Where the filesystem cannot collapse a range (tmpfs, btrfs) the log is not trimmed;
+the replay is capped regardless. A working Claude writes about 1 KB/s (measured; nothing while
+idle), so the default cap is reached after roughly two hours of continuous work.
+Turn the setting off to get exactly the old behaviour on new launches.
 
 ## The buttons under the New Task box
 
