@@ -183,7 +183,7 @@ function activate(context) {
     if (!fav) return;
     const t = vscode.window.createTerminal({ name: fav.label || path.basename(fav.path), cwd: fav.path });
     t.show();
-    moveTerminalTabToEnd();
+    moveTerminalTabToEnd(t);
   });
   reg('claudeHelper.openFolder', (fav) => {
     if (!fav) return;
