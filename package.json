@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.53.4",
+  "version": "0.54.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -945,6 +945,11 @@
           "type": "string",
           "default": "",
           "description": "Path to the bookmarks JSON file. Empty = ~/.config/cc-bookmarks.json"
+        },
+        "claudeHelper.clefShadow": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run Cloudflare Clef as a shadow router next to Haiku in the New Task box: the entry (and the mail it points at) goes to Cloudflare Workers AI and the answers are only logged to ~/logs/jev-shadow.jsonl for comparison. Never changes a plan. Needs /home/work/tools/jev."
         },
         "claudeHelper.titleModel": {
           "type": "string",
