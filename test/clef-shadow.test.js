@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Tests the Clef shadow router in lib/newtask.js: the questions built from the target
 // list (255-option cap, repos dropped first), and generateSessionPlan with a stubbed
-// Clef — the plan must not wait for it, must not change because of it, and a line must be
-// logged once it settles. Haiku is a fake `claude` script; VS Code and jev.js are stubbed.
+// Clef — the plan must not wait for it, must not change because of it, and (since 2026-10-02)
+// the line is logged by the caller via clefLog once Pat has confirmed, with the real final. Haiku is a fake `claude` script; VS Code and jev.js are stubbed.
 //
 // Run: node test/clef-shadow.test.js
 const fs = require('fs'), path = require('path'), os = require('os'), Module = require('module');
@@ -69,22 +69,32 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const plan = await nt.generateSessionPlan('printer at BB not printing', null);
   const took = Date.now() - t0;
   check('plan comes back without waiting for Clef', took < 600 && shadowed.length === 0, { took, n: shadowed.length });
+  await wait(900);
+  check('generateSessionPlan itself logs nothing, it hands the shadow out', shadowed.length === 0 && plan.shadow && plan.shadow.haiku.target === 'client:BB' && Array.isArray(plan.shadow.targets), shadowed);
+  // Pat changed the target to client:ZZ before confirming: the line must say so.
+  nt.clefLog(plan.shadow, 'printer at BB not printing', { kind: 'session', target: 'client:ZZ' });
   check('plan is Haiku\'s', plan.kind === 'session' && plan.target && plan.target.id === 'client:BB' && plan.slug === 'printer-offline', plan);
   check('Clef was asked once, with the entry as state', clefCalls.length === 1 && /printer at BB not printing/.test(clefCalls[0].state) && clefCalls[0].questions.kind, clefCalls);
-  await wait(900);
+  await wait(100);
   const [site, input, answers, decision, model] = shadowed[0] || [];
   check('shadow line written when Clef settles', shadowed.length === 1 && site === 'newtask-routing' && input === 'printer at BB not printing' && answers && answers.kind.choice === 'session' && answers.target.top['client:BB'] === 0.6 && !answers.kind.probabilities && model === 'clef', shadowed);
-  check('line carries haiku + final decisions', decision && decision.haiku.kind === 'session' && decision.haiku.target === 'client:BB' && decision.final.target === 'client:BB', decision);
+  check('line carries haiku + final decisions', decision && decision.haiku.kind === 'session' && decision.haiku.target === 'client:BB' && decision.haiku.target === 'client:BB' && decision.final.target === 'client:ZZ', decision);
+  shadowed.length = 0;
+  nt.clefLog(plan.shadow, 'printer at BB not printing', null);
+  await wait(50);
+  check('a cancelled entry is logged with final null', shadowed.length === 1 && shadowed[0][3].final === null, shadowed);
 
   // 4. Clef failure: plan unchanged, line logged with null.
   clefDelay = 0; clefResult = null; shadowed.length = 0;
   const p2 = await nt.generateSessionPlan('fix the queue view sorting', null);
+  nt.clefLog(p2.shadow, 'fix the queue view sorting', { kind: 'session', target: 'client:BB' });
   await wait(100);
   check('failed Clef changes nothing and logs jev:null', p2.kind === 'session' && shadowed.length === 1 && shadowed[0][2] === null, shadowed);
 
   // 5. Switch off.
   settings.clefShadow = false; clefCalls.length = 0; shadowed.length = 0;
-  await nt.generateSessionPlan('anything', null);
+  const p3 = await nt.generateSessionPlan('anything', null);
+  nt.clefLog(p3.shadow, 'anything', { kind: 'session', target: null });
   await wait(50);
   check('clefShadow=false: no call, no line', clefCalls.length === 0 && shadowed.length === 0, { c: clefCalls.length, s: shadowed.length });
 
