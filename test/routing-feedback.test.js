@@ -131,6 +131,24 @@ const line = (input, pt, ft, corrected = true, fk = 'session') => JSON.stringify
   const fb4 = nt.routingFeedback(targets);
   check('only the last ~200 KB is read', fb4.length === 1 && fb4[0].startsWith('"recent"'), fb4);
 
+  // 11. Clef is taught from the same records: inputs land in the right option's criteria,
+  // none and the kind get theirs, uncorrected options stay as they were.
+  fs.writeFileSync(LOG, line('same', 'client:BB', 'client:BB', false) + line('remind me', 'client:BB', 'client:BB', true, 'asana') + line('nothing fits', 'client:BB', null) + line('old thing', 'client:BB', 'client:CC') + line('printer at CC', 'client:BB', 'client:CC'));
+  const recs = nt.routingCorrections(targets);
+  const plain = nt.clefQuestions(targets).questions;
+  const taught = nt.clefQuestions(targets, recs).questions;
+  const tc = taught.target.criteria;
+  check('correction inputs are appended to the option they went to, newest first', tc['client:CC'] === plain.target.criteria['client:CC'] + ' Pat routed these here: "printer at CC"; "old thing"', tc['client:CC']);
+  check('none gets its corrections', tc.none === plain.target.criteria.none + ' Pat routed these here: "nothing fits"', tc.none);
+  check('uncorrected target criteria are unchanged', tc['client:BB'] === plain.target.criteria['client:BB'] + ' Pat routed these here: "remind me"' && !tc['client:BB'].includes('printer'), tc['client:BB']);
+  check('a changed kind is appended to that kind only', taught.kind.criteria.asana === plain.kind.criteria.asana + ' Pat classed these as asana: "remind me"' && taught.kind.criteria.session === plain.kind.criteria.session && taught.kind.criteria.email === plain.kind.criteria.email, taught.kind.criteria);
+  check('no corrections, no change', JSON.stringify(nt.clefQuestions(targets, []).questions) === JSON.stringify(plain));
+  check('Haiku prompt text is unchanged by the refactor', JSON.stringify(nt.routingFeedback(targets)) === JSON.stringify([
+    '"printer at CC" \u2192 kind session, target client:CC (you had proposed client:BB)',
+    '"old thing" \u2192 kind session, target client:CC (you had proposed client:BB)',
+    '"nothing fits" \u2192 kind session, target none (you had proposed client:BB)',
+    '"remind me" \u2192 kind asana, target client:BB (you had proposed client:BB)']), nt.routingFeedback(targets));
+
   console.log(failed ? `\n${failed} FAILED` : '\nAll routing-feedback tests passed.');
   process.exit(failed ? 1 : 0);
 })();

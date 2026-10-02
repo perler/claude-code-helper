@@ -91,6 +91,24 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(100);
   check('failed Clef changes nothing and logs jev:null', p2.kind === 'session' && shadowed.length === 1 && shadowed[0][2] === null, shadowed);
 
+  // 4b. Taught: corrections from the log reach Clef's option text, and the logged line says how many.
+  clefResult = { kind: { type: 'choice', choice: 'session', confidence: 0.5, probabilities: {} }, target: { type: 'choice', choice: 'client:BB', confidence: 0.4, probabilities: {} } };
+  fs.mkdirSync(path.join(tmp, 'logs'), { recursive: true });
+  const logLine = (input, ft) => JSON.stringify({ ts: 'x', input, proposed: { kind: 'session', target: 'client:ZZ' }, final: { kind: 'session', target: ft }, corrected: true }) + '\n';
+  fs.writeFileSync(path.join(tmp, 'logs', 'newtask-routing.jsonl'), logLine('bb printer', 'client:BB') + logLine('unknown thing', 'client:GONE'));
+  clefCalls.length = 0; shadowed.length = 0;
+  const p4 = await nt.generateSessionPlan('printer at BB not printing', null);
+  nt.clefLog(p4.shadow, 'printer at BB not printing', { kind: 'session', target: 'client:BB' });
+  await wait(100);
+  check('Clef is asked with the correction in the target option', /Pat routed these here: "bb printer"$/.test(clefCalls[0].questions.target.criteria['client:BB']) && !JSON.stringify(clefCalls[0].questions).includes('unknown thing'), clefCalls[0].questions.target.criteria['client:BB']);
+  check('clef_taught counts the corrections used', shadowed.length === 1 && shadowed[0][3].clef_taught === 1, shadowed);
+  fs.rmSync(path.join(tmp, 'logs'), { recursive: true });
+  shadowed.length = 0;
+  const p5 = await nt.generateSessionPlan('printer at BB not printing', null);
+  nt.clefLog(p5.shadow, 'x', null);
+  await wait(100);
+  check('no log: clef_taught is 0', shadowed.length === 1 && shadowed[0][3].clef_taught === 0, shadowed);
+
   // 5. Switch off.
   settings.clefShadow = false; clefCalls.length = 0; shadowed.length = 0;
   const p3 = await nt.generateSessionPlan('anything', null);
