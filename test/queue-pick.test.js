@@ -25,7 +25,7 @@ const queue = [
   { gid: '1218000000333', name: 'Something else', projects: [{ gid: 'p-bb', name: 'BB EDV' }], custom_fields: [] },
 ];
 // Shown separately (test 7): a waiting-on-event task the CLI put last with its marker.
-const waitingTask = { gid: '1218000000444', name: 'Backup after SRV001', priority_marker: '⚪', queue_group: 'waiting',
+const waitingTask = { gid: '1218000000444', name: 'Backup after SRV001', priority_marker: '🕓', queue_group: 'waiting',
   projects: [{ gid: 'p-bb', name: 'BB EDV' }], custom_fields: [{ enum_value: { name: '🕓 Waiting on event' } }] };
 const cli = path.join(tmp, 'asana');
 fs.writeFileSync(cli, `#!/bin/sh\n[ "$1" = queue ] && cat ${JSON.stringify(path.join(tmp, 'q.json'))}\n`, { mode: 0o755 });
@@ -157,7 +157,8 @@ function check(name, cond, detail) {
   const labels = qpSeen.items.map((i) => i.label);
   check('waiting: title counts only the rest', qpSeen.title === '📅 Today — 3 tasks + 1 waiting', qpSeen.title);
   check('waiting: separator then the waiting task, last', labels[labels.length - 2].startsWith('🕓 Waiting on event')
-    && qpSeen.items[labels.length - 2].kind === vscode.QuickPickItemKind.Separator && labels[labels.length - 1] === '⚪ Backup after SRV001', labels);
+    && qpSeen.items[labels.length - 2].kind === vscode.QuickPickItemKind.Separator && labels[labels.length - 1] === '🕓 Backup after SRV001', labels);
+  check('waiting: description gives the word without a second icon', qpSeen.items[labels.length - 1].description.startsWith('Waiting on event ·'), qpSeen.items[labels.length - 1].description);
   fs.writeFileSync(path.join(tmp, 'q.json'), JSON.stringify(queue));
 
   fs.rmSync(tmp, { recursive: true, force: true });
