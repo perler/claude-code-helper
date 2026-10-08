@@ -136,13 +136,12 @@ once. ✉️ Mail opens the inbox and is only there when
 `claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
 what is in that queue, or that inbox, right now.
 
-📅, ⏳ and 📥 open their queue as a checklist first. Every task is ticked to begin with,
-and a ticked task gets a Claude session of its own, in its own folder (the folder already
-stamped with its gid when it has one, otherwise a new one under its client). Untick the
-ones that should not. The first row, **Walk the rest in one inbox-zero session**, is not
-ticked; when you tick it, the unticked tasks go through the usual walkthrough with
-`skip <gids>` appended, so a task that got its own session is never walked as well. Enter
-on the untouched list gives every task its own session and starts no walkthrough; Esc
+📅, ⏳ and 📥 open their queue as a checklist first. Only the first row, **Walk the rest
+in one inbox-zero session**, is ticked to begin with, so Enter on the untouched list is the
+usual walkthrough. Tick a task and it gets a Claude session of its own, in its own folder
+(the folder already stamped with its gid when it has one, otherwise a new one under its
+client); the walkthrough then gets `skip <gids>` appended, so a task that got its own
+session is never walked as well. Untick the first row to start only the ticked tasks; Esc
 starts nothing. A task that already has a row in the Queue view with a live session is not
 started a second time.
 
@@ -151,8 +150,8 @@ thirty tabs in front of you. Each is told to check first whether its task is sti
 answered since, fixed since, stale — and if it can simply be closed, to say so and ask
 before doing anything else. When the dtach mode is off (`claudeHelper.useTmux` on,
 `claudeHelper.useDtach` off, or the terminal mode not `internal`) there is no such thing as
-a session without a tab, and the checklist works as it used to: tick the tasks that get a
-tab, with a 📌 in front of its name, and the walkthrough row is ticked already.
+a session without a tab, and a ticked task gets a tab instead, with a 📌 in front of its
+name.
 
 ## The Queue view
 

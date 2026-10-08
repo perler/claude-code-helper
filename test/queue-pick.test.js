@@ -6,8 +6,8 @@
 // What it pins down: a ticked task opens in its client's folder (the one stamped with
 // its gid when there is one), the rest-walk skips exactly the ticked gids, Enter on the
 // untouched list is the old full walk, and Esc starts nothing. That is the visible-tab
-// mode (no dtach); with the tab-less mode every task is pre-ticked and goes to the
-// Queue view instead of a tab, and the rest-walk row is the one that starts unticked.
+// mode (no dtach); in the tab-less mode a ticked task goes to the Queue view instead of
+// a tab. In both modes only the rest-walk row starts ticked.
 //
 // Run: node test/queue-pick.test.js
 const fs = require('fs'), path = require('path'), os = require('os'), Module = require('module');
@@ -123,18 +123,17 @@ function check(name, cond, detail) {
   await nt.pickFromQueue('today');
   check('rest-walk unticked = only the task tab', launches.length === 1 && launches[0].namePrefix === '📌 ', launches);
 
-  // 5. Tab-less mode: everything pre-ticked, the rest-walk row is not.
+  // 5. Tab-less mode: only the rest-walk row pre-ticked, as in tab mode.
   tabless = true;
   let seen;
   answer = (items, sel) => { seen = { items, sel: sel.slice() }; return sel; };
   launches.length = 0; queued.length = 0;
-  check('tab-less: Enter on the untouched list queues every task', await nt.pickFromQueue('today+input') && queued.length === 1
-    && queued[0].join() === '1218000000111,1218000000222,1218000000333', queued);
-  check('tab-less: all tasks pre-ticked, rest row is not', seen.sel.length === 3 && seen.sel.every((i) => i.task) && !seen.sel.some((i) => i.rest), seen.sel.map((i) => i.label));
-  check('tab-less: untouched Enter opens no tab and no walk', launches.length === 0, launches);
+  check('tab-less: Enter on the untouched list = full walk', await nt.pickFromQueue('today+input') && queued.length === 0
+    && launches.length === 1 && launches[0].initialPrompt === '/inbox-zero today+input', { queued, launches });
+  check('tab-less: only the rest row pre-ticked', seen.sel.length === 1 && seen.sel[0].rest, seen.sel.map((i) => i.label));
 
   // Untick one, tick the rest-walk row: two queued, the walk skips exactly those two.
-  answer = (items, sel) => [...sel.filter((i) => i.task && i.task.gid !== '1218000000333'), items.find((i) => i.rest)];
+  answer = (items, sel) => [...sel, ...items.filter((i) => i.task && i.task.gid !== '1218000000333')];
   launches.length = 0; queued.length = 0;
   await nt.pickFromQueue('today+input');
   check('tab-less: unticked task is not queued', queued.length === 1 && queued[0].join() === '1218000000111,1218000000222', queued);

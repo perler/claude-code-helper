@@ -10,7 +10,7 @@
 | 📁 project | one project, walked in a single inbox-zero session |
 | ✉️ Mail | mail triage |
 
-A queue button opens a checklist with every task ticked. Enter starts each ticked task as its own session **without a tab**. Untick a task to leave it out. Tick "Walk the rest in one inbox-zero session" to send the unticked tasks through the old walkthrough.
+A queue button opens a checklist with only "Walk the rest in one inbox-zero session" ticked, so Enter starts the usual walkthrough. Tick a task to give it its own session **without a tab**; the walkthrough then skips it.
 
 ## 2. Queue view
 
