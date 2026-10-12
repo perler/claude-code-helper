@@ -10,7 +10,7 @@ A sidebar for running Claude Code out of VS Code / code-server. Six panels:
    Resuming a folder with several sessions opens a picker.
 4. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
    attach, resume and kill.
-5. **Recent Sessions** — every Claude session on the machine, newest first, searchable,
+5. **Recent Sessions** — every Claude session on the machine, newest first, searchable by anything its tooltip shows,
    with resume.
 6. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
 

@@ -148,6 +148,17 @@ function activate(context) {
   reg('claudeHelper.openQueueTask', (row) => openQueueTask(row));
   reg('claudeHelper.removeQueueRow', (row) => removeQueueRow(row));
   reg('claudeHelper.clearFinishedQueue', () => clearFinishedQueue());
+  reg('claudeHelper.searchQueue', () => {
+    const box = vscode.window.createInputBox();
+    box.title = 'Search Queue';
+    box.placeholder = 'Filter by anything in the tooltip: task name, folder, state, session id…';
+    box.value = queueProvider.filter;
+    box.onDidChangeValue((v) => queueProvider.setFilter(v));
+    box.onDidAccept(() => box.hide());
+    box.onDidHide(() => box.dispose());
+    box.show();
+  });
+  reg('claudeHelper.clearQueueSearch', () => queueProvider.setFilter(''));
   reg('claudeHelper.showHelp', () => vscode.commands.executeCommand(
     'markdown.showPreview', vscode.Uri.file(path.join(context.extensionPath, 'HELP.md'))));
 
@@ -233,7 +244,7 @@ function activate(context) {
   reg('claudeHelper.searchSessions', () => {
     const box = vscode.window.createInputBox();
     box.title = 'Search Recent Sessions';
-    box.placeholder = 'Filter by session name or summary…';
+    box.placeholder = 'Filter by anything in the tooltip: name, prompt, last reply, folder, id…';
     box.value = sessProvider.filter;
     box.onDidChangeValue((v) => sessProvider.setFilter(v));
     box.onDidAccept(() => box.hide());
@@ -305,7 +316,7 @@ function activate(context) {
   reg('claudeHelper.searchAgentSessions', () => {
     const box = vscode.window.createInputBox();
     box.title = 'Search Agent Sessions';
-    box.placeholder = 'Filter by session name, directory or summary…';
+    box.placeholder = 'Filter by anything in the tooltip: name, prompt, last reply, folder, id…';
     box.value = agentProvider.filter;
     box.onDidChangeValue((v) => agentProvider.setFilter(v));
     box.onDidAccept(() => box.hide());

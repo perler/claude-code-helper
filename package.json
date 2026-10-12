@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.57.5",
+  "version": "0.58.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -214,6 +214,16 @@
         "icon": "$(clear-all)"
       },
       {
+        "command": "claudeHelper.searchQueue",
+        "title": "Search Queue",
+        "icon": "$(search)"
+      },
+      {
+        "command": "claudeHelper.clearQueueSearch",
+        "title": "Clear Queue Search",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "claudeHelper.resumeSession",
         "title": "Resume Session",
         "icon": "$(debug-rerun)"
@@ -410,9 +420,19 @@
           "group": "navigation@3"
         },
         {
-          "command": "claudeHelper.clearFinishedQueue",
+          "command": "claudeHelper.searchQueue",
           "when": "view == claudeHelper.queue",
           "group": "navigation@0"
+        },
+        {
+          "command": "claudeHelper.clearQueueSearch",
+          "when": "view == claudeHelper.queue && claudeHelper.queueFiltered",
+          "group": "navigation@1"
+        },
+        {
+          "command": "claudeHelper.clearFinishedQueue",
+          "when": "view == claudeHelper.queue",
+          "group": "navigation@2"
         },
         {
           "command": "claudeHelper.searchSessions",
