@@ -299,7 +299,7 @@ function activate(context) {
   // for another task) while the tree sits there.
   reg('claudeHelper.openSessionTask', (node) => {
     if (!node || node.kind !== 'session') return;
-    openAsanaTask(asanaTaskFor(node.session.id) || node.session.asana);
+    openAsanaTask(asanaTaskFor(node.session.id, node.session.cwd) || node.session.asana);
   });
 
   // bookmarks commands
