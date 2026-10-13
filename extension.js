@@ -1,12 +1,7 @@
 const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs');
-const cp = require('child_process');
 
-const { agentIndexFile, agentSocket, hasAgentSessionSource } = require('./lib/agent-index');
-const {
-  AgentSessionsProvider, attachAgentSession, removeAgentEntry, resumeAgentSession,
-} = require('./lib/agents');
 const {
   asanaAvailable, asanaTaskFor, forgetAsanaAvailable, openAsanaTask, refreshAsanaProjects,
 } = require('./lib/asana');
@@ -31,13 +26,12 @@ const { sessionTerminals } = require('./lib/session-registry');
 const {
   SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, setHiddenSessions,
 } = require('./lib/sessions');
-const { cfg, dtachSocketDir, removeDtachLog, shortHome } = require('./lib/shared');
+const { cfg, shortHome } = require('./lib/shared');
 const { startTabLabelWatcher } = require('./lib/tablabels');
 const {
   createTabStateProvider, startTabStateWatcher, tabStateSeedTerminals, tabStateSweepStale, tabStateTerminalClosed, tabStateTerminalFocused, tabStateTerminalOpened,
 } = require('./lib/tabstate');
 const { getTerminalCwd, terminalAsanaTask, terminalFromTabArg } = require('./lib/terminals');
-let agentProvider;
 let favProvider;
 let bookmarksProvider;
 
@@ -61,13 +55,10 @@ async function applyFastHoverOnce(context) {
 
 // What this workstation actually has. The extension runs on a client's machine too,
 // where there is no Asana CLI and no bridge, and everything that talks to either has
-// to be gone there rather than present and dead. `agentSessions` stays true on a box
-// that used to run the bridge, so its history remains readable after the CLI goes.
+// to be gone there rather than present and dead.
 function publishAvailability() {
   const asana = asanaAvailable();
   vscode.commands.executeCommand('setContext', 'claudeHelper.asanaAvailable', asana);
-  vscode.commands.executeCommand('setContext', 'claudeHelper.agentSessionsAvailable',
-    asana || hasAgentSessionSource());
   return asana;
 }
 
@@ -126,14 +117,6 @@ function activate(context) {
   sessProvider.view = sessView;
   providers.sess = sessProvider;
   context.subscriptions.push(sessView);
-
-  agentProvider = new AgentSessionsProvider();
-  const agentView = vscode.window.createTreeView('claudeHelper.agentSessions', {
-    treeDataProvider: agentProvider, showCollapseAll: false,
-  });
-  agentProvider.view = agentView;
-  providers.agent = agentProvider;
-  context.subscriptions.push(agentView);
 
   bookmarksProvider = new BookmarksProvider();
   setBookmarksProvider(bookmarksProvider);
@@ -311,26 +294,6 @@ function activate(context) {
     vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(node.session.file));
   });
 
-  // agent sessions commands
-  reg('claudeHelper.refreshAgentSessions', () => agentProvider.refresh());
-  reg('claudeHelper.searchAgentSessions', () => {
-    const box = vscode.window.createInputBox();
-    box.title = 'Search Agent Sessions';
-    box.placeholder = 'Filter by anything in the tooltip: name, prompt, last reply, folder, id…';
-    box.value = agentProvider.filter;
-    box.onDidChangeValue((v) => agentProvider.setFilter(v));
-    box.onDidAccept(() => box.hide());
-    box.onDidHide(() => box.dispose());
-    box.show();
-  });
-  reg('claudeHelper.clearAgentSessionsSearch', () => agentProvider.setFilter(''));
-  reg('claudeHelper.attachAgentSession', (node) => attachAgentSession(node));
-  reg('claudeHelper.resumeAgentSession', (node) => resumeAgentSession(node));
-  reg('claudeHelper.openAgentSessionFolder', (node) => {
-    if (!node || !node.entry) return;
-    vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(node.entry.dir), { forceNewWindow: true });
-  });
-  reg('claudeHelper.openAgentTask', (node) => openAsanaTask(node && node.entry));
   // Same link from Recent Sessions. It re-resolves at click time instead of trusting
   // the render-time node: the index moves on (a session ends, a terminal gets reused
   // for another task) while the tree sits there.
@@ -338,34 +301,6 @@ function activate(context) {
     if (!node || node.kind !== 'session') return;
     openAsanaTask(asanaTaskFor(node.session.id) || node.session.asana);
   });
-  reg('claudeHelper.copyAgentSessionId', (node) => {
-    if (!node || !node.entry) return;
-    vscode.env.clipboard.writeText(node.entry.sessionId);
-    vscode.window.setStatusBarMessage(`Copied session id: ${node.entry.sessionId}`, 2000);
-  });
-  reg('claudeHelper.killAgentSession', async (node) => {
-    if (!node || !node.entry) return;
-    const c = await vscode.window.showWarningMessage(
-      `Kill agent session "${node.entry.displayName}"? The claude process will stop.`, { modal: true }, 'Kill'
-    );
-    if (c !== 'Kill') return;
-    const e = node.entry;
-    if (e.tmuxName) {
-      try { cp.spawnSync('tmux', ['-L', agentSocket(), 'kill-session', '-t', e.tmuxName]); } catch {}
-    } else if (e.sessionId) {
-      // Same reach as the bridge's own killSession: the session id appears both in
-      // the dtach master's socket-path arg and in claude's --session-id, so one
-      // pattern takes down master and process; then drop the socket, which is what
-      // both sides read as "dead".
-      try { cp.spawnSync('pkill', ['-f', e.sessionId]); } catch {}
-      try { fs.unlinkSync(path.join(dtachSocketDir(), e.sessionId + '.sock')); } catch {}
-      removeDtachLog(e.sessionId);
-    }
-    // Killed, not forgotten: the row stays as ⚫ ended and is still resumable from
-    // its transcript. "Remove from List" is the gesture that drops it for good.
-    agentProvider.refresh();
-  });
-  reg('claudeHelper.removeAgentSession', (node) => removeAgentEntry(node));
 
   // bookmarks commands
   reg('claudeHelper.refreshBookmarks', () => bookmarksProvider.refresh());
@@ -446,7 +381,7 @@ function activate(context) {
       publishAvailability();
       askProvider.postAsanaState();
       favProvider.refresh(); sessProvider.refresh();
-      agentProvider.refresh(); bookmarksProvider.refresh();
+      bookmarksProvider.refresh();
     })
   );
 
@@ -460,20 +395,6 @@ function activate(context) {
   context.subscriptions.push({ dispose: () => clearInterval(sessTimer) });
   // Catch sessions that ended while this window was closed.
   setTimeout(() => { try { sweepScratchRenames(); } catch {} }, 5_000);
-
-  // Agent Sessions: faster refresh (15s) so live/ended status and new pickups
-  // appear promptly, plus a watcher on the index file for instant updates.
-  if (asanaAvailable() || hasAgentSessionSource()) {
-    const agentTimer = setInterval(() => agentProvider.refresh(), 15_000);
-    context.subscriptions.push({ dispose: () => clearInterval(agentTimer) });
-    try {
-      const idxFile = agentIndexFile();
-      const watcher = fs.watch(path.dirname(idxFile), (_evt, fname) => {
-        if (!fname || fname.startsWith(path.basename(idxFile))) agentProvider.refresh();
-      });
-      context.subscriptions.push({ dispose: () => watcher.close() });
-    } catch { /* dir may not exist yet; timer still covers it */ }
-  }
 }
 
 function deactivate() {}

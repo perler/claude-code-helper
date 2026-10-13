@@ -1,6 +1,6 @@
 # Claude Code Helper
 
-A sidebar for running Claude Code out of VS Code / code-server. Six panels:
+A sidebar for running Claude Code out of VS Code / code-server. Five panels:
 
 1. **New Task** — a text box that starts a session. It works out where the work belongs
    (a client, a project, or a fresh scratch folder), names the session and opens it.
@@ -8,22 +8,18 @@ A sidebar for running Claude Code out of VS Code / code-server. Six panels:
    state. Only there when the Asana CLI is installed; see "The Queue view" below.
 3. **Favourites** — bookmarked directories; start or resume a session in one click.
    Resuming a folder with several sessions opens a picker.
-4. **Agent Sessions** — sessions the Asana→Claude bridge spawned, live or ended, with
-   attach, resume and kill.
-5. **Recent Sessions** — every Claude session on the machine, newest first, searchable by anything its tooltip shows,
+4. **Recent Sessions** — every Claude session on the machine, newest first, searchable by anything its tooltip shows,
    with resume.
-6. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
+5. **Bookmarks** — URLs, opened in the browser or in a tab inside the editor.
 
 Plus a **Live Session** panel that opens beside a session's terminal — see below.
 
 Replaces the standalone `claude-favourites` and `terminal-tree` extensions.
 
-**One of those is only there when the machine has the pieces it needs.** The Agent
-Sessions panel appears when the Asana CLI (`claudeHelper.asanaCommand`) is installed or
-the bridge's index/history file exists. The queue buttons under the New Task box, and
-the "Open Asana Task" context-menu items, appear when that CLI is installed; the ✉️ Mail
+**Some of those are only there when the machine has the pieces it needs.** The queue buttons under the New Task box, and
+the "Open Asana Task" context-menu items, appear when the Asana CLI (`claudeHelper.asanaCommand`) is installed; the ✉️ Mail
 button needs `claudeHelper.mailInboxCommand`. On a
-workstation without either, the Agent Sessions panel is gone, the New Task box keeps
+workstation without either, the New Task box keeps
 everything but its queue row, and nothing is spawned in the background. Everything else — favourites, recent sessions, bookmarks,
 Go to Folder, the tab badges, Reveal Session Folder — needs nothing beyond Claude Code itself.
 
@@ -93,7 +89,7 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.titleModel` | `claude-haiku-4-5-…` | Model that names a New Task session and picks its destination |
 | `claudeHelper.apiKeyFile` | `~/.env` | File read for `ANTHROPIC_API_KEY`; routing goes through the API (~1s) instead of the CLI (~9s) |
 | `claudeHelper.asanaCommand` | `~/tools/asana/asana` | Asana CLI. **Absent means the Asana panels and buttons are hidden.** |
-| `claudeHelper.agentIndexPath` | `~/.claude/agent-sessions.json` | Index the Asana→Claude bridge writes; feeds Agent Sessions |
+| `claudeHelper.agentIndexPath` | `~/.claude/agent-sessions.json` | Index the Asana→Claude bridge writes; read to launch and resume its task sessions and to find a session's Asana task |
 | `claudeHelper.agentTmuxSocket` | `claude` | tmux socket (`-L`) the bridge's sessions use |
 | `claudeHelper.mailLookupCommand` | (site-specific) | Resolves an `email <subject>` New Task entry to the actual mail |
 | `claudeHelper.mailInboxCommand` | (site-specific) | Lists the inbox mail addressed to us; **absent means no ✉️ Mail button** |

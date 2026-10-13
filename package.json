@@ -1,8 +1,8 @@
 {
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
-  "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions, agent sessions and bookmarks.",
-  "version": "0.58.0",
+  "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions and bookmarks.",
+  "version": "0.59.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -42,11 +42,6 @@
           "name": "Favourites"
         },
         {
-          "id": "claudeHelper.agentSessions",
-          "name": "Agent Sessions",
-          "when": "claudeHelper.agentSessionsAvailable"
-        },
-        {
           "id": "claudeHelper.sessions",
           "name": "Recent Sessions"
         },
@@ -64,10 +59,6 @@
       {
         "view": "claudeHelper.queue",
         "contents": "No queue sessions yet.\nPick tasks with 📅 Today, ⏳ Input or 📥 Both under New Task."
-      },
-      {
-        "view": "claudeHelper.agentSessions",
-        "contents": "No agent sessions yet.\nTag an Asana task `claude` to spawn one."
       },
       {
         "view": "claudeHelper.bookmarks",
@@ -264,58 +255,9 @@
         "category": "Claude Code Helper"
       },
       {
-        "command": "claudeHelper.refreshAgentSessions",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
-        "command": "claudeHelper.searchAgentSessions",
-        "title": "Search Agent Sessions",
-        "icon": "$(search)"
-      },
-      {
-        "command": "claudeHelper.clearAgentSessionsSearch",
-        "title": "Clear Agent Session Search",
-        "icon": "$(clear-all)"
-      },
-      {
-        "command": "claudeHelper.attachAgentSession",
-        "title": "Attach Session",
-        "icon": "$(plug)"
-      },
-      {
-        "command": "claudeHelper.resumeAgentSession",
-        "title": "Resume Session",
-        "icon": "$(debug-rerun)"
-      },
-      {
-        "command": "claudeHelper.openAgentSessionFolder",
-        "title": "Open Project Folder",
-        "icon": "$(folder-opened)"
-      },
-      {
-        "command": "claudeHelper.openAgentTask",
-        "title": "Open Asana Task",
-        "icon": "$(link-external)"
-      },
-      {
         "command": "claudeHelper.openSessionTask",
         "title": "Open Asana Task",
         "icon": "$(link-external)"
-      },
-      {
-        "command": "claudeHelper.copyAgentSessionId",
-        "title": "Copy Session ID"
-      },
-      {
-        "command": "claudeHelper.killAgentSession",
-        "title": "Kill Session",
-        "icon": "$(trash)"
-      },
-      {
-        "command": "claudeHelper.removeAgentSession",
-        "title": "Remove from List",
-        "icon": "$(close)"
       },
       {
         "command": "claudeHelper.openQueueSession",
@@ -455,21 +397,6 @@
           "group": "navigation@3"
         },
         {
-          "command": "claudeHelper.searchAgentSessions",
-          "when": "view == claudeHelper.agentSessions",
-          "group": "navigation@0"
-        },
-        {
-          "command": "claudeHelper.clearAgentSessionsSearch",
-          "when": "view == claudeHelper.agentSessions && claudeHelper.agentSessionsFiltered",
-          "group": "navigation@1"
-        },
-        {
-          "command": "claudeHelper.refreshAgentSessions",
-          "when": "view == claudeHelper.agentSessions",
-          "group": "navigation@2"
-        },
-        {
           "command": "claudeHelper.addBookmark",
           "when": "view == claudeHelper.bookmarks",
           "group": "navigation@1"
@@ -605,66 +532,6 @@
           "command": "claudeHelper.deleteSession",
           "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?$/",
           "group": "3_remove@2"
-        },
-        {
-          "command": "claudeHelper.attachAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
-          "group": "inline@1"
-        },
-        {
-          "command": "claudeHelper.openAgentTask",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /Task$/ && claudeHelper.asanaAvailable",
-          "group": "inline@2"
-        },
-        {
-          "command": "claudeHelper.killAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
-          "group": "inline@3"
-        },
-        {
-          "command": "claudeHelper.resumeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionEnded/",
-          "group": "inline@1"
-        },
-        {
-          "command": "claudeHelper.removeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionEnded/",
-          "group": "inline@3"
-        },
-        {
-          "command": "claudeHelper.attachAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
-          "group": "1_open@1"
-        },
-        {
-          "command": "claudeHelper.resumeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
-          "group": "1_open@2"
-        },
-        {
-          "command": "claudeHelper.openAgentSessionFolder",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
-          "group": "1_open@3"
-        },
-        {
-          "command": "claudeHelper.openAgentTask",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/ && claudeHelper.asanaAvailable",
-          "group": "1_open@4"
-        },
-        {
-          "command": "claudeHelper.copyAgentSessionId",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /agentSession(Live|Ended)/",
-          "group": "2_copy@1"
-        },
-        {
-          "command": "claudeHelper.killAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionLive/",
-          "group": "9_destroy@1"
-        },
-        {
-          "command": "claudeHelper.removeAgentSession",
-          "when": "view == claudeHelper.agentSessions && viewItem =~ /^agentSessionEnded/",
-          "group": "9_destroy@1"
         },
         {
           "command": "claudeHelper.openQueueSession",
@@ -929,7 +796,7 @@
         "claudeHelper.agentIndexPath": {
           "type": "string",
           "default": "~/.claude/agent-sessions.json",
-          "description": "Index file the Asana→Claude bridge writes; powers the Agent Sessions view."
+          "description": "Index file the Asana→Claude bridge writes; read to launch and resume bridge task sessions and to find a session's Asana task (Open Asana Task)."
         },
         "claudeHelper.agentTmuxSocket": {
           "type": "string",
