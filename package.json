@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions and bookmarks.",
-  "version": "0.59.0",
+  "version": "0.59.1",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -796,7 +796,7 @@
         "claudeHelper.agentIndexPath": {
           "type": "string",
           "default": "~/.claude/agent-sessions.json",
-          "description": "Index file the Asana→Claude bridge writes; read to launch and resume bridge task sessions and to find a session's Asana task (Open Asana Task)."
+          "description": "Index of helper-launched tmux agent sessions (the Asana bridge no longer writes it). Open Asana Task finds bridge sessions through `claude agents --json` and the .asana-claude.json marker in their working directory."
         },
         "claudeHelper.agentTmuxSocket": {
           "type": "string",

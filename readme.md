@@ -89,7 +89,7 @@ highlighted row. Uses `fd` (or
 | `claudeHelper.titleModel` | `claude-haiku-4-5-…` | Model that names a New Task session and picks its destination |
 | `claudeHelper.apiKeyFile` | `~/.env` | File read for `ANTHROPIC_API_KEY`; routing goes through the API (~1s) instead of the CLI (~9s) |
 | `claudeHelper.asanaCommand` | `~/tools/asana/asana` | Asana CLI. **Absent means the Asana panels and buttons are hidden.** |
-| `claudeHelper.agentIndexPath` | `~/.claude/agent-sessions.json` | Index the Asana→Claude bridge writes; read to launch and resume its task sessions and to find a session's Asana task |
+| `claudeHelper.agentIndexPath` | `~/.claude/agent-sessions.json` | Index of helper-launched tmux agent sessions (the bridge no longer writes it). Open Asana Task finds bridge sessions via `claude agents --json` + the `.asana-claude.json` marker in their directory |
 | `claudeHelper.agentTmuxSocket` | `claude` | tmux socket (`-L`) the bridge's sessions use |
 | `claudeHelper.mailLookupCommand` | (site-specific) | Resolves an `email <subject>` New Task entry to the actual mail |
 | `claudeHelper.mailInboxCommand` | (site-specific) | Lists the inbox mail addressed to us; **absent means no ✉️ Mail button** |
