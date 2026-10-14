@@ -132,14 +132,14 @@ once. ✉️ Mail opens the inbox and is only there when
 `claudeHelper.mailInboxCommand` points at a script that runs. The number on a button is
 what is in that queue, or that inbox, right now.
 
-📅, ⏳ and 📥 open their queue as a checklist first. Only the first row, **Walk the rest
-in one inbox-zero session**, is ticked to begin with, so Enter on the untouched list is the
-usual walkthrough. Tick a task and it gets a Claude session of its own, in its own folder
-(the folder already stamped with its gid when it has one, otherwise a new one under its
-client); the walkthrough then gets `skip <gids>` appended, so a task that got its own
-session is never walked as well. Untick the first row to start only the ticked tasks; Esc
-starts nothing. A task that already has a row in the Queue view with a live session is not
-started a second time.
+📅, ⏳ and 📥 open their queue as a checklist first, grouped by project. The ▶ on a row
+(shown on hover) opens that task at once in a Claude session of its own, in its own tab and
+folder (the folder already stamped with its gid when it has one, otherwise a new one under
+its client). Ticked tasks go one of two ways, by the two buttons in the title bar: 💬 walks
+just the ticked tasks in one inbox-zero session (`only <gids>`; nothing ticked walks the
+whole queue), ☰ puts each ticked task into the Queue view with a session of its own. VS
+Code's own OK cannot be hidden and does the same as ☰. Esc starts nothing. A task that
+already has a row in the Queue view with a live session is not started a second time.
 
 The task sessions run **without a terminal tab** (see below), so thirty tasks do not put
 thirty tabs in front of you. Each is told to check first whether its task is still real —
