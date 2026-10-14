@@ -135,7 +135,7 @@ what is in that queue, or that inbox, right now.
 📅, ⏳ and 📥 open their queue as a checklist first, grouped by project. The ▶ on a row
 (shown on hover) opens that task at once in a Claude session of its own, in its own tab and
 folder (the folder already stamped with its gid when it has one, otherwise a new one under
-its client). Ticked tasks go one of two ways, by the two buttons in the title bar: 💬 walks
+its client); the ↗ beside it opens the task in Asana. Ticked tasks go one of two ways, by the two buttons in the title bar: 💬 walks
 just the ticked tasks in one inbox-zero session (`only <gids>`; nothing ticked walks the
 whole queue), ☰ puts each ticked task into the Queue view with a session of its own. VS
 Code's own OK cannot be hidden and does the same as ☰. Esc starts nothing. A task that

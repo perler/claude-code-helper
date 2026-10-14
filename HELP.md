@@ -10,7 +10,7 @@
 | 📁 project | one project, walked in a single inbox-zero session |
 | ✉️ Mail | mail triage |
 
-A queue button opens a checklist. ▶ on a row opens that task now, in its own session and tab. Tick tasks, then 💬 (title bar) walks them in one inbox-zero session — nothing ticked walks the whole queue — or ☰ (or OK) puts them into the Queue view, a session each **without a tab**.
+A queue button opens a checklist. ▶ on a row opens that task now, in its own session and tab; ↗ opens it in Asana. Tick tasks, then 💬 (title bar) walks them in one inbox-zero session — nothing ticked walks the whole queue — or ☰ (or OK) puts them into the Queue view, a session each **without a tab**.
 
 ## 2. Queue view
 
