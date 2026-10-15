@@ -68,7 +68,11 @@ const tick = (qp, ...idx) => { qp.selectedItems = idx.map((i) => qp.items[i]); }
   check('untouched Enter = triage of all (empty list)', r.got.one.length === 0 && r.got.triage.length === 1 && r.got.triage[0].length === 0, r.got);
   check('nothing ticked at start', r.qp.selectedItems.length === 0);
   check('title counts the mails', r.qp.title === '✉️ Inbox — 3 mails', r.qp.title);
-  check('placeholder as asked', r.qp.placeholder === '▶ opens one mail now · tick mails, then 💬 or Enter works them in one session (nothing ticked: all)', r.qp.placeholder);
+  // Bitwarden's test (apps/browser/src/autofill/utils/qualification.ts): lowercase, drop
+  // hyphens and whitespace, look for a login keyword anywhere. A hit pops its drop-down.
+  const bw = (t) => ['email', 'username', 'login', 'userid'].filter((k) => t.toLowerCase().replace(/[-\s]/g, '').includes(k));
+  check('placeholder is not a login field to Bitwarden', bw(r.qp.placeholder).length === 0, r.qp.placeholder);
+  check('title is not a login field to Bitwarden', bw(r.qp.title).length === 0, r.qp.title);
   check('row buttons: ↗ only with a thread link', r.qp.items[0].buttons.length === 2 && r.qp.items[1].buttons.length === 1 && r.qp.items[1].buttons[0].iconPath.id === 'play', r.qp.items.map((i) => i.buttons.length));
   check('title button is 💬', r.qp.buttons.length === 1 && r.qp.buttons[0].iconPath.id === 'comment-discussion');
   check('canSelectMany set', r.qp.canSelectMany === true);
