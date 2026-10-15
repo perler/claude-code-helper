@@ -24,7 +24,7 @@ const {
 } = require('./lib/queue');
 const { sessionTerminals } = require('./lib/session-registry');
 const {
-  SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, setHiddenSessions,
+  SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, resumeAndCompactNode, newSessionHereNode, setHiddenSessions,
 } = require('./lib/sessions');
 const { cfg, shortHome } = require('./lib/shared');
 const { startTabLabelWatcher } = require('./lib/tablabels');
@@ -236,6 +236,8 @@ function activate(context) {
   });
   reg('claudeHelper.clearSessionSearch', () => sessProvider.setFilter(''));
   reg('claudeHelper.resumeSession', (node) => resumeSessionNode(node));
+  reg('claudeHelper.resumeAndCompact', (node) => resumeAndCompactNode(node));
+  reg('claudeHelper.newSessionHere', (node) => newSessionHereNode(node));
   reg('claudeHelper.hideSession', async (node) => {
     if (!node || node.kind !== 'session') return;
     const s = node.session;

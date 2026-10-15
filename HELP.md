@@ -14,6 +14,8 @@ A queue button opens a checklist. ▶ on a row opens that task now, in its own s
 
 ✉️ Mail is the same checklist: ▶ opens one mail now, ↗ opens it in Gmail, and 💬 (or Enter) works the ticked mails in one triage session. One ticked is routed like a single mail; nothing ticked triages the whole inbox.
 
+Recent Sessions, right-click a row: Resume and Compact (only on sessions that are not running: resumes it and runs `/compact`, to keep working on the same job with room again) and Start New Session Here (a fresh session in that row's folder, for a clean context; the old session is left alone).
+
 ## 2. Queue view
 
 One row per task. Click a row to attach a tab to its session. Closing the tab of a working or asking session leaves it running. Closing the tab of a finished session ends it and removes its row; resume it from Recent Sessions if you need it again. The cross on a row closes its tab as well.

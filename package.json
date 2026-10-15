@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions and bookmarks.",
-  "version": "0.64.0",
+  "version": "0.65.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -218,6 +218,16 @@
         "command": "claudeHelper.resumeSession",
         "title": "Resume Session",
         "icon": "$(debug-rerun)"
+      },
+      {
+        "command": "claudeHelper.newSessionHere",
+        "title": "Start New Session Here",
+        "icon": "$(add)"
+      },
+      {
+        "command": "claudeHelper.resumeAndCompact",
+        "title": "Resume and Compact",
+        "icon": "$(fold)"
       },
       {
         "command": "claudeHelper.openSessionFolder",
@@ -494,14 +504,24 @@
           "group": "1_open@1"
         },
         {
+          "command": "claudeHelper.resumeAndCompact",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?$/",
+          "group": "1_open@2"
+        },
+        {
+          "command": "claudeHelper.newSessionHere",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "group": "1_open@3"
+        },
+        {
           "command": "claudeHelper.openSessionFolder",
           "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
-          "group": "1_open@2"
+          "group": "1_open@4"
         },
         {
           "command": "claudeHelper.revealSessionFile",
           "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
-          "group": "1_open@3"
+          "group": "1_open@5"
         },
         {
           "command": "claudeHelper.openSessionTask",
@@ -511,7 +531,7 @@
         {
           "command": "claudeHelper.openSessionTask",
           "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/ && claudeHelper.asanaAvailable",
-          "group": "1_open@4"
+          "group": "1_open@6"
         },
         {
           "command": "claudeHelper.copySessionId",
