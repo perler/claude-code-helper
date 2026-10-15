@@ -8,9 +8,11 @@
 | ⏳ Input | tasks waiting on your input |
 | 📥 Both | the two above as one queue |
 | 📁 project | one project, walked in a single inbox-zero session |
-| ✉️ Mail | mail triage |
+| ✉️ Mail | your inbox: one mail, or several at a time |
 
 A queue button opens a checklist. ▶ on a row opens that task now, in its own session and tab; ↗ opens it in Asana. Tick tasks, then 💬 (title bar) walks them in one inbox-zero session — nothing ticked walks the whole queue — or ☰ (or OK) puts them into the Queue view, a session each **without a tab**.
+
+✉️ Mail is the same checklist: ▶ opens one mail now, ↗ opens it in Gmail, and 💬 (or Enter) works the ticked mails in one triage session. One ticked is routed like a single mail; nothing ticked triages the whole inbox.
 
 ## 2. Queue view
 

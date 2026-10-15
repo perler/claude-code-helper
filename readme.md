@@ -219,16 +219,18 @@ button in the panel header forces a fetch, ignoring the two-minute cache window.
 ### ✉️ Mail
 
 The mail Gmail holds for `@erler-edv-beratung.de` — everything in the inbox whose
-To/Cc/Delivered-To names that domain, newest first, unread marked with a dot. Two ways
-out of the picker:
+To/Cc/Delivered-To names that domain, newest first, unread marked with a dot. The picker
+is a checklist like the queue's: ▶ on a row opens that mail now, ↗ opens its Gmail thread
+beside the list. Tick mails, then 💬 (title bar) or Enter:
 
-- **One mail** goes through the same routing as anything typed into the box: the sender
-  decides the client, and the session opens in that client's folder with the thread to
-  reply to. It is the `email <subject>` entry without the typing — and without the second
-  IMAP round trip, because the picker already holds the message.
-- **Triage all N** starts one session that reads every one of them and hands back a
-  numbered table with a proposed action per mail, then waits. Nothing is sent and no task
-  is created before you approve its row.
+- **One mail** (▶, or exactly one ticked) goes through the same routing as anything typed
+  into the box: the sender decides the client, and the session opens in that client's
+  folder with the thread to reply to. It is the `email <subject>` entry without the typing
+  — and without the second IMAP round trip, because the picker already holds the message.
+- **Two or more ticked** start one session over just those mails; **nothing ticked** starts
+  it over the whole inbox. It reads them and hands back a numbered table with a proposed
+  action per mail, then waits. Nothing is sent and no task is created before you approve
+  its row.
 
 ## The session tab's own right-click menu
 
