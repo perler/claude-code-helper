@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Tests the ✉️ mail checklist (2026-10-15, aligned with the queue picker): the real
+// Tests the ✉️ mail picker (2026-10-15: click opens, tick button, 💬 works the ticked): the real
 // pickFromMail and startMailTriage out of lib/newtask.js, VS Code and the launch stubbed.
 //
-// What it pins down: Enter on the untouched list = the whole-inbox triage prompt, exactly
-// triagePrompt(cmd); two ticks = a triage over just those two; one tick and ▶ = the single-
-// mail route; ↗ opens Gmail and leaves the list open; Esc starts nothing.
+// What it pins down: a row click = that one mail routed single; ☐/☑ hover button toggles without
+// closing, keeps other ticks and the highlight; 💬 = none: whole-inbox triage, one: single route,
+// several: triage over just those; ↗ opens Gmail and leaves the list open; Esc starts nothing.
 //
 // Run: node test/mail-pick.test.js
 const fs = require('fs'), path = require('path'), os = require('os'), Module = require('module');
@@ -23,7 +23,7 @@ const vscode = {
   window: {
     createQuickPick() {
       const h = {};
-      const qp = { items: [], selectedItems: [], buttons: [], hidden: false,
+      const qp = { items: [], selectedItems: [], activeItems: [], buttons: [], hidden: false,
         onDidAccept: (f) => { h.accept = f; }, onDidHide: (f) => { h.hide = f; },
         onDidTriggerButton: (f) => { h.button = f; }, onDidTriggerItemButton: (f) => { h.item = f; },
         dispose() {}, hide() { qp.hidden = true; setImmediate(() => h.hide()); },
@@ -60,47 +60,64 @@ async function run(drive) {
   await nt.pickFromMail(list, { one: (m) => got.one.push(m), triage: (ms) => got.triage.push(ms) });
   return { got, qp: qpSeen };
 }
-const tick = (qp, ...idx) => { qp.selectedItems = idx.map((i) => qp.items[i]); };
 
 (async () => {
-  // 1. Enter on the untouched list = whole inbox.
-  let r = await run((qp, h) => h.accept());
-  check('untouched Enter = triage of all (empty list)', r.got.one.length === 0 && r.got.triage.length === 1 && r.got.triage[0].length === 0, r.got);
-  check('nothing ticked at start', r.qp.selectedItems.length === 0);
+  const tickBtn = (qp, i) => qp.items[i].buttons[qp.items[i].buttons.length - 1];
+  const toggle = (qp, h, i) => h.item({ button: tickBtn(qp, i), item: qp.items[i] });
+
+  // 1. Initial state, placeholder, title, buttons.
+  let r = await run((qp) => qp.hide());
+  check('nothing ticked at start, canSelectMany off', r.qp.canSelectMany !== true && r.qp.items.every((i) => i.label.startsWith('☐')), r.qp.items.map((i) => i.label));
   check('title counts the mails', r.qp.title === '✉️ Inbox — 3 mails', r.qp.title);
   // Bitwarden's test (apps/browser/src/autofill/utils/qualification.ts): lowercase, drop
   // hyphens and whitespace, look for a login keyword anywhere. A hit pops its drop-down.
   const bw = (t) => ['email', 'username', 'login', 'userid'].filter((k) => t.toLowerCase().replace(/[-\s]/g, '').includes(k));
   check('placeholder is not a login field to Bitwarden', bw(r.qp.placeholder).length === 0, r.qp.placeholder);
   check('title is not a login field to Bitwarden', bw(r.qp.title).length === 0, r.qp.title);
-  check('row buttons: ↗ only with a thread link', r.qp.items[0].buttons.length === 2 && r.qp.items[1].buttons.length === 1 && r.qp.items[1].buttons[0].iconPath.id === 'play', r.qp.items.map((i) => i.buttons.length));
+  check('placeholder has no "mail" at all', !/mail/.test(r.qp.placeholder.toLowerCase().replace(/[-\s]/g, '')), r.qp.placeholder);
+  check('row buttons: ↗ only with a thread link, tick on every row, no ▶',
+    r.qp.items[0].buttons.length === 2 && r.qp.items[1].buttons.length === 1
+    && r.qp.items.every((i) => i.buttons.every((b) => b.iconPath.id !== 'play')) && tickBtn(r.qp, 1).iconPath.id === 'circle-large-outline', r.qp.items.map((i) => i.buttons.length));
   check('title button is 💬', r.qp.buttons.length === 1 && r.qp.buttons[0].iconPath.id === 'comment-discussion');
-  check('canSelectMany set', r.qp.canSelectMany === true);
 
-  // 2. 💬 with nothing ticked = same.
+  // 2. Clicking a row (Enter on it) = that one mail, routed single.
+  r = await run((qp, h) => { qp.selectedItems = [qp.items[2]]; h.accept(); });
+  check('row click routes that one mail', r.got.one.length === 1 && r.got.one[0].subject === 'Backup alert' && r.got.triage.length === 0, r.got);
+  check('row click hides the list', r.qp.hidden);
+
+  // 3. 💬 with nothing ticked = whole inbox.
   r = await run((qp, h) => h.button(qp.buttons[0]));
   check('💬 untouched = triage of all', r.got.triage.length === 1 && r.got.triage[0].length === 0, r.got);
 
-  // 3. Two ticks.
-  r = await run((qp, h) => { tick(qp, 0, 2); h.accept(); });
-  check('two ticks = one triage over those two', r.got.one.length === 0 && r.got.triage.length === 1
+  // 4. Tick toggle keeps the list open, keeps other ticks, restores the highlight.
+  r = await run((qp, h) => {
+    qp.activeItems = [qp.items[1]];
+    toggle(qp, h, 0); toggle(qp, h, 2);
+    const s = { open: !qp.hidden, labels: qp.items.map((i) => i.label[0]), title: qp.title,
+      icon: tickBtn(qp, 0).iconPath.id, active: qp.activeItems.map((i) => i.mail.subject).join() };
+    toggle(qp, h, 2);                       // untick again
+    s.after = qp.items.map((i) => i.label[0]).join('');
+    got4 = s; qp.hide();
+  });
+  var got4;
+  check('tick keeps list open and shows ☑ on both', got4.open && got4.labels.join('') === '☑☐☑' && got4.icon === 'pass-filled', got4);
+  check('tick keeps the highlighted row and counts in the title', got4.active === 'Invoice question' && got4.title.endsWith('2 ticked'), got4);
+  check('untick clears just that one', got4.after === '☑☐☐', got4);
+  check('ticking started nothing', r.got.one.length + r.got.triage.length === 0, r.got);
+
+  // 5. Two ticks, then 💬.
+  r = await run((qp, h) => { toggle(qp, h, 0); toggle(qp, h, 2); h.button(qp.buttons[0]); });
+  check('two ticks + 💬 = one triage over those two (list order)', r.got.one.length === 0 && r.got.triage.length === 1
     && r.got.triage[0].map((m) => m.subject).join() === 'Printer offline,Backup alert', r.got);
 
-  // 4. One tick = single-mail route.
-  r = await run((qp, h) => { tick(qp, 1); h.accept(); });
-  check('one tick = routed as a single mail', r.got.triage.length === 0 && r.got.one.length === 1 && r.got.one[0].subject === 'Invoice question', r.got);
+  // 6. One tick + 💬 = single-mail route (incl. mail without a thread link).
+  r = await run((qp, h) => { toggle(qp, h, 1); h.button(qp.buttons[0]); });
+  check('one tick + 💬 = routed as a single mail', r.got.triage.length === 0 && r.got.one.length === 1 && r.got.one[0].subject === 'Invoice question', r.got);
 
-  // 5. ▶ on a row.
-  r = await run((qp, h) => h.item({ button: qp.items[2].buttons[1], item: qp.items[2] }));
-  check('▶ routes that one mail', r.got.one.length === 1 && r.got.one[0].subject === 'Backup alert' && r.got.triage.length === 0, r.got);
-  check('▶ hides the list', r.qp.hidden);
-
-  // 6. ↗ opens Gmail, list stays, then Esc.
+  // 7. ↗ opens Gmail, list stays open (ticks kept), then Esc.
   opened.length = 0;
-  r = await run((qp, h) => { h.item({ button: qp.items[0].buttons[0], item: qp.items[0] }); const stillOpen = !qp.hidden; opened.push(stillOpen); qp.hide(); });
-  check('↗ opens the thread link and keeps the list open', opened[0] === list[0].thread_link && opened[1] === true && r.got.one.length + r.got.triage.length === 0, opened);
-
-  // 7. Esc.
+  r = await run((qp, h) => { toggle(qp, h, 0); h.item({ button: qp.items[0].buttons[0], item: qp.items[0] }); opened.push(!qp.hidden, qp.items[0].label[0]); qp.hide(); });
+  check('↗ opens the thread link and keeps the list open and the tick', opened[0] === list[0].thread_link && opened[1] === true && opened[2] === '☑' && r.got.one.length + r.got.triage.length === 0, opened);
   r = await run((qp) => qp.hide());
   check('Esc starts nothing', r.got.one.length === 0 && r.got.triage.length === 0, r.got);
 

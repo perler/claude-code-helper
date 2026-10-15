@@ -221,10 +221,12 @@ button in the panel header forces a fetch, ignoring the two-minute cache window.
 
 The mail Gmail holds for `@erler-edv-beratung.de` — everything in the inbox whose
 To/Cc/Delivered-To names that domain, newest first, unread marked with a dot. The picker
-is a checklist like the queue's: ▶ on a row opens that mail now, ↗ opens its Gmail thread
-beside the list. Tick mails, then 💬 (title bar) or Enter:
+works the other way round from the queue's: **clicking a row (or Enter on it) starts a
+session for that mail now**. The ☐ button on the right of a row ticks it (☑), ↗ opens its
+Gmail thread beside the list; ticking keeps the list open. 💬 (title bar) then works the
+ticked mails:
 
-- **One mail** (▶, or exactly one ticked) goes through the same routing as anything typed
+- **One mail** (a row click, or exactly one ticked) goes through the same routing as anything typed
   into the box: the sender decides the client, and the session opens in that client's
   folder with the thread to reply to. It is the `email <subject>` entry without the typing
   — and without the second IMAP round trip, because the picker already holds the message.
