@@ -3,11 +3,11 @@
 // lib/newtask.js, a fake `asana` CLI printing a fixed queue, and a temp clients tree.
 // VS Code and the terminal launch are stubbed; every launch is recorded instead.
 //
-// What it pins down: a ticked task opens in its client's folder (the one stamped with
-// its gid when there is one), the rest-walk skips exactly the ticked gids, Enter on the
-// untouched list is the old full walk, and Esc starts nothing. That is the visible-tab
-// mode (no dtach); in the tab-less mode a ticked task goes to the Queue view instead of
-// a tab. In both modes only the rest-walk row starts ticked.
+// What it pins down (2026-10-14 layout: two title-bar buttons, ▶/↗ per row): 💬 walks the
+// ticked tasks in one inbox-zero session, nothing ticked the whole queue; ☰ — and OK, which
+// VS Code will not hide — opens a tab per ticked task in its client's folder (the one stamped
+// with its gid when there is one), or hands them to the Queue view in the tab-less mode; OK
+// with nothing ticked starts nothing; ▶ opens one row now; ↗ opens Asana and keeps the list.
 //
 // Run: node test/queue-pick.test.js
 const fs = require('fs'), path = require('path'), os = require('os'), Module = require('module');
@@ -35,31 +35,33 @@ process.env.HOME = tmp;
 fs.mkdirSync(path.join(tmp, '.cache', 'claude-code-helper'), { recursive: true });
 
 // ─── stubs ───────────────────────────────────────────────────────────────────
-let answer = null;   // (items) => selected items | null for Esc
+let script = null;   // (qp, h) => drives the picker once shown, the way Pat would
+const opened = [];   // URLs handed to the browser (↗)
 const settings = { asanaCommand: cli, clientsDir: clients, projectsDir: path.join(tmp, 'projects'), scratchDir: path.join(tmp, 'tasks') };
 const vscode = {
   QuickPickItemKind: { Separator: -1 },
   ProgressLocation: { Window: 10 },
+  ThemeIcon: class { constructor(id) { this.id = id; } },
+  Uri: { parse: (u) => u, file: (f) => f },
+  env: { openExternal: (u) => { opened.push(u); } },
   workspace: { getConfiguration: () => ({ get: (k) => settings[k] }) },
   window: {
     withProgress: (_o, fn) => fn(),
     showWarningMessage: (m) => { throw new Error('unexpected warning: ' + m); },
     showErrorMessage: (m) => { throw new Error('unexpected error: ' + m); },
     createQuickPick() {
-      const qp = { items: [], selectedItems: [], accept: null, hide: null };
-      qp.onDidAccept = (h) => { qp.accept = h; };
-      qp.onDidHide = (h) => { qp.hide = h; };
-      qp.onDidChangeValue = () => {};
-      qp.dispose = () => {};
-      qp.show = () => setImmediate(() => {
-        const pick = answer(qp.items, qp.selectedItems);
-        if (pick) { qp.selectedItems = pick; qp.accept(); }
-        qp.hide();
-      });
+      const h = {};
+      const qp = { items: [], selectedItems: [], buttons: [], hidden: false,
+        onDidAccept: (f) => { h.accept = f; }, onDidHide: (f) => { h.hide = f; },
+        onDidTriggerButton: (f) => { h.button = f; }, onDidTriggerItemButton: (f) => { h.item = f; },
+        dispose() {}, hide() { if (qp.hidden) return; qp.hidden = true; setImmediate(() => h.hide()); },
+        show: () => setImmediate(() => script(qp, h)) };
+      lastQp = qp;
       return qp;
     },
   },
 };
+let lastQp = null;
 const launches = [];
 let tabless = false;
 const queued = [];   // what the (stubbed) Queue view was handed, one array of gids per call
@@ -90,74 +92,80 @@ function check(name, cond, detail) {
 (async () => {
   const projects = asana.loadAsanaProjects();
   check('project cache readable by the routing table', projects.length === 2, projects);
+  const tasks = (qp) => qp.items.filter((i) => i.task);
+  const tick = (qp, ...gids) => { qp.selectedItems = tasks(qp).filter((i) => gids.includes(i.task.gid)); };
+  const [walkBtn, queueBtn] = [0, 1];
 
-  // 1. Tick two tasks, keep the rest-walk ticked.
-  answer = (items, sel) => [...sel, ...items.filter((i) => i.task && ['1218000000111', '1218000000222'].includes(i.task.gid))];
+  // 1. Tick two, 💬: one inbox-zero session over just those two, in home.
+  script = (qp, h) => { tick(qp, '1218000000111', '1218000000222'); h.button(qp.buttons[walkBtn]); };
   launches.length = 0;
-  check('ticked run reports a start', await nt.pickFromQueue('today+input'));
-  const [a, b, rest] = launches;
-  check('three launches: two tasks and the rest', launches.length === 3, launches.map((l) => l.dir));
+  check('💬 with ticks reports a start', await nt.pickFromQueue('today+input'));
+  check('💬 with ticks = one walk over only those gids', launches.length === 1
+    && launches[0].initialPrompt === '/inbox-zero today+input only 1218000000111,1218000000222', launches);
+  check('💬 walk runs in home and says how many', launches[0] && launches[0].dir === tmp
+    && launches[0].label === 'inbox-zero · Today + Input (2 picked)', launches[0]);
+
+  // 2. Nothing ticked, 💬: the whole queue.
+  script = (qp, h) => h.button(qp.buttons[walkBtn]);
+  launches.length = 0;
+  await nt.pickFromQueue('input');
+  check('💬 with nothing ticked = full walk', launches.length === 1 && launches[0].initialPrompt === '/inbox-zero input', launches);
+
+  // 3. Tick two, ☰ (visible-tab mode): a tab each, in its client's folder.
+  script = (qp, h) => { tick(qp, '1218000000111', '1218000000222'); h.button(qp.buttons[queueBtn]); };
+  launches.length = 0;
+  check('☰ reports a start', await nt.pickFromQueue('today+input'));
+  const [a, b] = launches;
+  check('☰ = two task tabs, no walk', launches.length === 2 && launches.every((l) => l.namePrefix === '📌 '), launches.map((l) => l.dir));
   check('new task gets a slug folder under its client', a && a.dir === path.join(clients, 'BB', 'printer-offline'), a && a.dir);
-  check('task tab carries the pin', a && a.namePrefix === '📌 ', a);
   check('task prompt names the task and forbids a copy', a && /Asana task "✨ Printer offline again" \(1218000000111\).*do NOT create a second one/.test(a.initialPrompt), a && a.initialPrompt);
   check('task already stamped with its gid reuses its folder', b && b.dir === path.join(clients, 'RAH', 'old-work'), b && b.dir);
-  check('rest-walk skips exactly the ticked gids', rest && rest.initialPrompt === '/inbox-zero today+input skip 1218000000111,1218000000222', rest && rest.initialPrompt);
-  check('rest-walk runs in home', rest && rest.dir === tmp, rest && rest.dir);
   check('each tab opens only once the previous one has its shell', launches.every((l) => l.prevReady), launches.map((l) => l.prevReady));
 
-  // 2. Enter on the untouched list = the old full walk.
-  answer = (_items, sel) => sel;
-  launches.length = 0;
-  await nt.pickFromQueue('input');
-  check('untouched Enter = full walk, no skip', launches.length === 1 && launches[0].initialPrompt === '/inbox-zero input', launches);
-
-  // 3. Esc starts nothing.
-  answer = () => null;
-  launches.length = 0;
-  check('Esc reports nothing started', !(await nt.pickFromQueue('today')));
-  check('Esc launches nothing', launches.length === 0, launches);
-
-  // 4. Only tasks, rest-walk unticked.
-  answer = (items) => items.filter((i) => i.task && i.task.gid === '1218000000333');
+  // 4. OK does what ☰ does; with nothing ticked it starts nothing.
+  script = (qp, h) => { tick(qp, '1218000000333'); h.accept(); };
   launches.length = 0;
   await nt.pickFromQueue('today');
-  check('rest-walk unticked = only the task tab', launches.length === 1 && launches[0].namePrefix === '📌 ', launches);
+  check('OK with a tick = that task tab', launches.length === 1 && launches[0].namePrefix === '📌 ', launches);
+  script = (qp, h) => h.accept();
+  launches.length = 0;
+  check('OK with nothing ticked reports nothing started', !(await nt.pickFromQueue('today')));
+  check('OK with nothing ticked launches nothing', launches.length === 0, launches);
 
-  // 5. Tab-less mode: only the rest-walk row pre-ticked, as in tab mode.
+  // 5. ▶ on a row opens that task now, whatever is ticked.
+  script = (qp, h) => { tick(qp, '1218000000111'); const it = tasks(qp).find((i) => i.task.gid === '1218000000333'); h.item({ item: it, button: it.buttons[1] }); };
+  launches.length = 0;
+  await nt.pickFromQueue('today');
+  check('▶ opens just that row', launches.length === 1 && launches[0].namePrefix === '📌 ' && launches[0].dir.startsWith(path.join(clients, 'BB', 'something-else')), launches.map((l) => l.dir));
+
+  // 6. ↗ opens Asana and leaves the list open; Esc then starts nothing.
+  script = (qp, h) => { const it = tasks(qp)[0]; h.item({ item: it, button: it.buttons[0] }); setImmediate(() => { check('↗ leaves the list open', !qp.hidden); qp.hide(); }); };
+  launches.length = 0; opened.length = 0;
+  check('↗ then Esc reports nothing started', !(await nt.pickFromQueue('today')));
+  check('↗ opens the task in Asana', opened.length === 1 && /1218000000111$/.test(opened[0]) && launches.length === 0, { opened, launches });
+
+  // 7. Tab-less mode: ☰ hands the ticks to the Queue view, no tab; 💬 still walks.
   tabless = true;
-  let seen;
-  answer = (items, sel) => { seen = { items, sel: sel.slice() }; return sel; };
-  launches.length = 0; queued.length = 0;
-  check('tab-less: Enter on the untouched list = full walk', await nt.pickFromQueue('today+input') && queued.length === 0
-    && launches.length === 1 && launches[0].initialPrompt === '/inbox-zero today+input', { queued, launches });
-  check('tab-less: only the rest row pre-ticked', seen.sel.length === 1 && seen.sel[0].rest, seen.sel.map((i) => i.label));
-
-  // Untick one, tick the rest-walk row: two queued, the walk skips exactly those two.
-  answer = (items, sel) => [...sel, ...items.filter((i) => i.task && i.task.gid !== '1218000000333')];
+  script = (qp, h) => { tick(qp, '1218000000111', '1218000000222'); h.button(qp.buttons[queueBtn]); };
   launches.length = 0; queued.length = 0;
   await nt.pickFromQueue('today+input');
-  check('tab-less: unticked task is not queued', queued.length === 1 && queued[0].join() === '1218000000111,1218000000222', queued);
-  check('tab-less: rest-walk skips exactly the queued gids', launches.length === 1 && launches[0].initialPrompt === '/inbox-zero today+input skip 1218000000111,1218000000222', launches);
-
-  // Only the rest-walk row ticked: the old full walk, nothing queued.
-  answer = (items) => [items.find((i) => i.rest)];
+  check('tab-less: ☰ queues the ticks', queued.length === 1 && queued[0].join() === '1218000000111,1218000000222' && launches.length === 0, { queued, launches });
+  script = (qp, h) => h.button(qp.buttons[walkBtn]);
   launches.length = 0; queued.length = 0;
   await nt.pickFromQueue('input');
-  check('tab-less: only the walk ticked = full walk, nothing queued', queued.length === 0 && launches.length === 1 && launches[0].initialPrompt === '/inbox-zero input', { queued, launches });
+  check('tab-less: 💬 = full walk, nothing queued', queued.length === 0 && launches.length === 1 && launches[0].initialPrompt === '/inbox-zero input', { queued, launches });
+  tabless = false;
 
-  // 6. Waiting-on-event tasks: last, under their own separator, out of the title count.
+  // 8. Waiting-on-event tasks: last, under their own separator, out of the title count.
   fs.writeFileSync(path.join(tmp, 'q.json'), JSON.stringify([waitingTask, ...queue]));
-  let qpSeen;
-  const origCreate = vscode.window.createQuickPick;
-  vscode.window.createQuickPick = () => { qpSeen = origCreate(); return qpSeen; };
-  answer = () => null;
+  script = (qp) => qp.hide();
   await nt.pickFromQueue('today');
-  vscode.window.createQuickPick = origCreate;
+  const qpSeen = lastQp;
   const labels = qpSeen.items.map((i) => i.label);
   check('waiting: title counts only the rest', qpSeen.title === '📅 Today — 3 tasks + 1 waiting', qpSeen.title);
-  check('waiting: separator then the waiting task, last', labels[labels.length - 2].startsWith('🕓 Waiting on event')
+  check('waiting: separator then the waiting task, last', labels[labels.length - 2].startsWith('🕓 BB EDV — waiting on event')
     && qpSeen.items[labels.length - 2].kind === vscode.QuickPickItemKind.Separator && labels[labels.length - 1] === '🕓 Backup after SRV001', labels);
-  check('waiting: description gives the word without a second icon', qpSeen.items[labels.length - 1].description.startsWith('Waiting on event ·'), qpSeen.items[labels.length - 1].description);
+  check('waiting: description gives the word without a second icon', qpSeen.items[labels.length - 1].description.startsWith('Waiting on event'), qpSeen.items[labels.length - 1].description);
   fs.writeFileSync(path.join(tmp, 'q.json'), JSON.stringify(queue));
 
   fs.rmSync(tmp, { recursive: true, force: true });
