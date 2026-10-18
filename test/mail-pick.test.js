@@ -132,7 +132,11 @@ async function run(drive) {
   check('two picked: lists exactly those two, not the third',
     p.includes('1. Printer offline — Anna — 2026-10-14 — https://mail.google.com/mail/u/0/#inbox/aaa') && p.includes('2. Backup alert')
     && !p.includes('Invoice question') && p.includes('these 2 mails'), p);
-  check('picked prompt keeps the table and approval rules', /ONE numbered table/.test(p) && /before I approve its row/.test(p));
+  check('picked prompt runs inbox-zero, scope mail only, one mail per round', /inbox-zero skill/.test(p) && /scope `mail only`/.test(p) && /AskUserQuestion/.test(p) && /before I approve it in its round/.test(p));
+  const bad = /blocks of five|ONE numbered table|answer by number|5 at a time|one table/i;
+  const pAll = triagePrompt(mailInboxCommand());
+  check('no table / by-number / blocks-of-five wording in either prompt', !bad.test(p) && !bad.test(pAll), [p, pAll]);
+  check('all prompt runs inbox-zero with scope mail', /inbox-zero skill/.test(pAll) && /scope `mail`/.test(pAll) && !/mail only/.test(pAll), pAll);
   check('no mails argument = same text as an empty list', triagePrompt('x') === triagePrompt('x', []));
 
   fs.rmSync(tmp, { recursive: true, force: true });
