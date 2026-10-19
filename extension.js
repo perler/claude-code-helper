@@ -168,6 +168,7 @@ function activate(context) {
     if (open && open.dir) open.run('newFolder', open.dir);
   });
   reg('claudeHelper.newSession', () => newScratchSession());
+  reg('claudeHelper.quickSession', () => newScratchSession({ quick: true }));
   reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
   reg('claudeHelper.startClaudeFromExplorer', (uri) => startClaudeFromUri(uri));

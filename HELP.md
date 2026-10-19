@@ -14,6 +14,8 @@ A queue button opens a checklist. ▶ on a row opens that task now, in its own s
 
 ✉️ Mail works the other way round: click a row (or Enter) to open that mail now, ☐ on the right ticks it, ↗ opens it in Gmail, and 💬 works the ticked mails in one triage session. One ticked is routed like a single mail; nothing ticked triages the whole inbox.
 
+⚡ Quick Session (title bar, beside refresh and help) starts a session straight away in a new ~/tasks/YYYY-MM-DD-HHMM folder: no prompt, no routing, for a question that belongs to no client or project. The folder takes the session's title once it ends.
+
 Recent Sessions, right-click a row: Resume and Compact (only on sessions that are not running: resumes it and runs `/compact`, to keep working on the same job with room again) and Start New Session Here (a fresh session in that row's folder, for a clean context; the old session is left alone).
 
 ## 2. Queue view
