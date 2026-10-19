@@ -282,6 +282,13 @@ function activate(context) {
     if (!cwd) { vscode.window.showWarningMessage('Unknown project folder for this session.'); return; }
     vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(cwd), { forceNewWindow: true });
   });
+  // The hover twin of the Favourites folder button: reveal, not a new window.
+  reg('claudeHelper.revealSessionFolder', (node) => {
+    if (!node || node.kind !== 'session') return;
+    const cwd = getSessionCwd(node.session);
+    if (!cwd) { vscode.window.showWarningMessage('Unknown project folder for this session.'); return; }
+    vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(cwd));
+  });
   reg('claudeHelper.copySessionId', (node) => {
     if (!node || node.kind !== 'session') return;
     vscode.env.clipboard.writeText(node.session.id);
