@@ -16,7 +16,7 @@ A queue button opens a checklist. ▶ on a row opens that task now, in its own s
 
 ⚡ Quick Session (title bar, beside refresh and help) starts a session straight away in a new ~/tasks/YYYY-MM-DD-HHMM folder: no prompt, no routing, for a question that belongs to no client or project. The folder takes the session's title once it ends.
 
-Recent Sessions, right-click a row: Resume and Compact (only on sessions that are not running: resumes it and runs `/compact`, to keep working on the same job with room again) and Start New Session Here (a fresh session in that row's folder, for a clean context; the old session is left alone).
+Recent Sessions, right-click a row: Resume and Compact (only on sessions that are not running: resumes it and runs `/compact`, to keep working on the same job with room again) and Start New Session Here (a fresh session in that row's folder, for a clean context; the old session is left alone). Start New Session Here is also the ▶ button on hover, beside resume.
 
 ## 2. Queue view
 

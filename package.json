@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions and bookmarks.",
-  "version": "0.70.0",
+  "version": "0.71.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -231,7 +231,7 @@
       {
         "command": "claudeHelper.newSessionHere",
         "title": "Start New Session Here",
-        "icon": "$(add)"
+        "icon": "$(play)"
       },
       {
         "command": "claudeHelper.resumeAndCompact",
@@ -506,6 +506,11 @@
           "command": "claudeHelper.removeFavourite",
           "when": "view == claudeHelper.favourites && viewItem == favourite",
           "group": "3_edit@9"
+        },
+        {
+          "command": "claudeHelper.newSessionHere",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "group": "inline@0"
         },
         {
           "command": "claudeHelper.resumeSession",
