@@ -24,7 +24,7 @@ const {
 } = require('./lib/queue');
 const { sessionTerminals } = require('./lib/session-registry');
 const {
-  SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, resumeAndCompactNode, newSessionHereNode, setHiddenSessions,
+  SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, resumeAndCompactNode, setHiddenSessions,
 } = require('./lib/sessions');
 const { cfg, shortHome } = require('./lib/shared');
 const { startTabLabelWatcher } = require('./lib/tablabels');
@@ -34,8 +34,16 @@ const {
 const { getTerminalCwd, terminalAsanaTask, terminalFromTabArg } = require('./lib/terminals');
 let favProvider;
 let bookmarksProvider;
-
 let sessProvider; // module-level so launchClaude can nudge Recent Sessions after a launch
+
+// A favourite already is { path, label }; a Recent Sessions row is turned into one
+// from the folder its session ran in.
+function folderOf(arg) {
+  if (!arg || arg.kind !== 'session') return arg;
+  const cwd = getSessionCwd(arg.session);
+  if (!cwd) { vscode.window.showWarningMessage('Unknown project folder for this session.'); return null; }
+  return { path: cwd, label: path.basename(cwd) };
+}
 
 async function applyFastHoverOnce(context) {
   const FLAG = 'claudeHelper.fastHoverApplied';
@@ -169,30 +177,27 @@ function activate(context) {
   });
   reg('claudeHelper.newSession', () => newScratchSession());
   reg('claudeHelper.quickSession', () => newScratchSession({ quick: true }));
-  reg('claudeHelper.startClaude', (fav) => startClaude(fav));
   reg('claudeHelper.resumeClaude', (fav) => resumeClaude(fav));
   reg('claudeHelper.startClaudeFromExplorer', (uri) => startClaudeFromUri(uri));
   reg('claudeHelper.newFolderAndStartClaudeFromExplorer', (uri) => newFolderAndStartClaudeFromUri(uri));
   reg('claudeHelper.resumeClaudeFromExplorer', (uri) => resumeClaudeFromUri(uri));
-  reg('claudeHelper.openTerminalHere', (fav) => {
-    if (!fav) return;
-    const t = vscode.window.createTerminal({ name: fav.label || path.basename(fav.path), cwd: fav.path });
+  // The folder actions are shared by Favourites and Recent Sessions; folderOf turns
+  // either row into the { path, label } they act on.
+  const folderAction = (fn) => (arg) => { const f = folderOf(arg); if (f) fn(f); };
+  reg('claudeHelper.startClaude', folderAction(startClaude));
+  reg('claudeHelper.openTerminalHere', folderAction((f) => {
+    const t = vscode.window.createTerminal({ name: f.label || path.basename(f.path), cwd: f.path });
     t.show();
     moveTerminalTabToEnd(t);
-  });
-  reg('claudeHelper.openFolder', (fav) => {
-    if (!fav) return;
-    vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(fav.path), { forceNewWindow: true });
-  });
-  reg('claudeHelper.revealInExplorer', (fav) => {
-    if (!fav) return;
-    vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(fav.path));
-  });
-  reg('claudeHelper.copyPath', (fav) => {
-    if (!fav) return;
-    vscode.env.clipboard.writeText(fav.path);
-    vscode.window.setStatusBarMessage(`Copied: ${fav.path}`, 2000);
-  });
+  }));
+  reg('claudeHelper.openFolder', folderAction((f) =>
+    vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(f.path), { forceNewWindow: true })));
+  reg('claudeHelper.revealInExplorer', folderAction((f) =>
+    vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(f.path))));
+  reg('claudeHelper.copyPath', folderAction((f) => {
+    vscode.env.clipboard.writeText(f.path);
+    vscode.window.setStatusBarMessage(`Copied: ${f.path}`, 2000);
+  }));
   reg('claudeHelper.renameFavourite', async (fav) => {
     if (!fav) return;
     const value = await vscode.window.showInputBox({
@@ -238,7 +243,6 @@ function activate(context) {
   reg('claudeHelper.clearSessionSearch', () => sessProvider.setFilter(''));
   reg('claudeHelper.resumeSession', (node) => resumeSessionNode(node));
   reg('claudeHelper.resumeAndCompact', (node) => resumeAndCompactNode(node));
-  reg('claudeHelper.newSessionHere', (node) => newSessionHereNode(node));
   reg('claudeHelper.hideSession', async (node) => {
     if (!node || node.kind !== 'session') return;
     const s = node.session;
@@ -275,19 +279,6 @@ function activate(context) {
     if (hidden.delete(s.id)) await setHiddenSessions(hidden);
     sessProvider.refresh();
     vscode.window.setStatusBarMessage(`Deleted session ${s.id}`, 3000);
-  });
-  reg('claudeHelper.openSessionFolder', (node) => {
-    if (!node || node.kind !== 'session') return;
-    const cwd = getSessionCwd(node.session);
-    if (!cwd) { vscode.window.showWarningMessage('Unknown project folder for this session.'); return; }
-    vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(cwd), { forceNewWindow: true });
-  });
-  // The hover twin of the Favourites folder button: reveal, not a new window.
-  reg('claudeHelper.revealSessionFolder', (node) => {
-    if (!node || node.kind !== 'session') return;
-    const cwd = getSessionCwd(node.session);
-    if (!cwd) { vscode.window.showWarningMessage('Unknown project folder for this session.'); return; }
-    vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(cwd));
   });
   reg('claudeHelper.copySessionId', (node) => {
     if (!node || node.kind !== 'session') return;
