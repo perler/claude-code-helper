@@ -77,8 +77,8 @@ async function run(drive) {
   check('placeholder has no "mail" at all', !/mail/.test(r.qp.placeholder.toLowerCase().replace(/[-\s]/g, '')), r.qp.placeholder);
   check('row buttons: ↗ only with a thread link, tick on every row, no ▶',
     r.qp.items[0].buttons.length === 2 && r.qp.items[1].buttons.length === 1
-    && r.qp.items.every((i) => i.buttons.every((b) => b.iconPath.id !== 'play')) && tickBtn(r.qp, 1).iconPath.id === 'circle-large-outline', r.qp.items.map((i) => i.buttons.length));
-  check('title button is 💬', r.qp.buttons.length === 1 && r.qp.buttons[0].iconPath.id === 'comment-discussion');
+    && r.qp.items.every((i) => i.buttons.every((b) => !String(b.iconPath).endsWith('25b6.svg'))) && String(tickBtn(r.qp, 1).iconPath).endsWith('2610.svg'), r.qp.items.map((i) => i.buttons.length));
+  check('title button is 💬', r.qp.buttons.length === 1 && String(r.qp.buttons[0].iconPath).endsWith('1f4ac.svg'));
 
   // 2. Clicking a row (Enter on it) = that one mail, routed single.
   r = await run((qp, h) => { qp.selectedItems = [qp.items[2]]; h.accept(); });
@@ -94,13 +94,13 @@ async function run(drive) {
     qp.activeItems = [qp.items[1]];
     toggle(qp, h, 0); toggle(qp, h, 2);
     const s = { open: !qp.hidden, labels: qp.items.map((i) => i.label[0]), title: qp.title,
-      icon: tickBtn(qp, 0).iconPath.id, active: qp.activeItems.map((i) => i.mail.subject).join() };
+      icon: String(tickBtn(qp, 0).iconPath), active: qp.activeItems.map((i) => i.mail.subject).join() };
     toggle(qp, h, 2);                       // untick again
     s.after = qp.items.map((i) => i.label[0]).join('');
     got4 = s; qp.hide();
   });
   var got4;
-  check('tick keeps list open and shows ☑ on both', got4.open && got4.labels.join('') === '☑☐☑' && got4.icon === 'pass-filled', got4);
+  check('tick keeps list open and shows ☑ on both', got4.open && got4.labels.join('') === '☑☐☑' && got4.icon.endsWith('2611.svg'), got4);
   check('tick keeps the highlighted row and counts in the title', got4.active === 'Invoice question' && got4.title.endsWith('2 ticked'), got4);
   check('untick clears just that one', got4.after === '☑☐☐', got4);
   check('ticking started nothing', r.got.one.length + r.got.triage.length === 0, r.got);
