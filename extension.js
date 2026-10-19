@@ -15,7 +15,6 @@ const { currentFolderSearch, goToFolder } = require('./lib/folder-search');
 const {
   launchClaude, moveTerminalTabToEnd, newFolderAndStartClaudeFromUri, newScratchSession, redrawDtachSessions, repairTabNames, sweepDtachLogs, resumeClaude, resumeClaudeFromUri, startClaude, startClaudeFromUri, sweepScratchRenames,
 } = require('./lib/launch');
-const { livePanelFollow, registerLiveRecordProvider, showLivePanel } = require('./lib/livepanel');
 const { AskViewProvider } = require('./lib/newtask');
 const { forgetMailAvailable } = require('./lib/mail');
 const { providers } = require('./lib/providers');
@@ -83,7 +82,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.window.onDidOpenTerminal((t) => tabStateTerminalOpened(t)),
     vscode.window.onDidCloseTerminal((t) => tabStateTerminalClosed(t)),
-    vscode.window.onDidChangeActiveTerminal((t) => { tabStateTerminalFocused(t); livePanelFollow(t); })
+    vscode.window.onDidChangeActiveTerminal((t) => tabStateTerminalFocused(t))
   );
   startTabStateWatcher(context);
   setTimeout(tabStateSweepStale, 5000);
@@ -350,8 +349,6 @@ function activate(context) {
     openAsanaTask(task);
   });
 
-  reg('claudeHelper.showLiveSession', () => showLivePanel());
-  registerLiveRecordProvider(context);   // serves the read-only `claude-live:` turn documents
 
   reg('claudeHelper.revealActiveTerminalCwd', () => {
     const t = vscode.window.activeTerminal;

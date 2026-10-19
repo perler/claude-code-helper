@@ -57,4 +57,4 @@ A task born from an email also locks credential files. That lock lifts by itself
 
 ## 5. Tab right-click menu
 
-Show Live Session Panel, Open Asana Task, Reveal Session Folder.
+Open Asana Task, Reveal Session Folder.
