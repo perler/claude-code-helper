@@ -138,6 +138,10 @@ just the ticked tasks in one inbox-zero session (`only <gids>`; nothing ticked w
 whole queue), ☰ puts each ticked task into the Queue view with a session of its own. VS
 Code's own OK cannot be hidden and does the same as ☰. Esc starts nothing. A task that
 already has a row in the Queue view with a live session is not started a second time.
+A task some live Claude session is already working is not in the checklist at all (the
+title says how many were left out): its session runs in a folder stamped with its gid, or
+its transcript opens with the `This is Asana task "…" (<gid>)` line ▶ writes, which is
+the only trace when the task runs in a repo folder.
 
 The task sessions run **without a terminal tab** (see below), so thirty tasks do not put
 thirty tabs in front of you. Each is told to check first whether its task is still real —

@@ -168,6 +168,25 @@ function check(name, cond, detail) {
   check('waiting: description gives the word without a second icon', qpSeen.items[labels.length - 1].description.startsWith('Waiting on event'), qpSeen.items[labels.length - 1].description);
   fs.writeFileSync(path.join(tmp, 'q.json'), JSON.stringify(queue));
 
+  // 9. A task a live session already works is left out: one through its stamped folder
+  // (RAH old-work, gid …222), one through the task line its transcript opens with, as a
+  // repo-folder session has no stamp (…111). This process stands in for the live claude.
+  const sessDir = path.join(tmp, '.claude', 'sessions');
+  fs.mkdirSync(sessDir, { recursive: true });
+  const repo = path.join(tmp, 'projects', 'zentrale');
+  fs.mkdirSync(repo, { recursive: true });
+  fs.writeFileSync(path.join(sessDir, '1.json'), JSON.stringify({ pid: process.pid, sessionId: 's-stamped', cwd: path.join(clients, 'RAH', 'old-work') }));
+  fs.writeFileSync(path.join(sessDir, '2.json'), JSON.stringify({ pid: process.pid, sessionId: 's-repo', cwd: repo }));
+  const tdir = path.join(tmp, '.claude', 'projects', repo.replace(/\//g, '-'));
+  fs.mkdirSync(tdir, { recursive: true });
+  fs.writeFileSync(path.join(tdir, 's-repo.jsonl'), JSON.stringify({ type: 'attachment', content: 'x'.repeat(200000) }) + '\n'
+    + JSON.stringify({ type: 'user', message: { content: 'This is Asana task "✨ Printer offline again" (1218000000111) — work it there; do NOT create a second one.' } }) + '\n');
+  script = (qp) => qp.hide();
+  await nt.pickFromQueue('today');
+  check('open in a session: both left out', tasks(lastQp).map((i) => i.task.gid).join() === '1218000000333', tasks(lastQp).map((i) => i.task.gid));
+  check('open in a session: title says how many', lastQp.title === '📅 Today — 1 task · 2 open in a session, not shown', lastQp.title);
+  fs.rmSync(path.join(tmp, '.claude'), { recursive: true, force: true });
+
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log(failed ? `${failed} failed` : 'all passed');
   process.exit(failed ? 1 : 0);
