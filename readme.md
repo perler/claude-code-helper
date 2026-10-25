@@ -141,7 +141,8 @@ already has a row in the Queue view with a live session is not started a second 
 A task some live Claude session is already working is not in the checklist at all (the
 title says how many were left out): its session runs in a folder stamped with its gid, or
 its transcript opens with the `This is Asana task "…" (<gid>)` line ▶ writes, which is
-the only trace when the task runs in a repo folder.
+the only trace when the task runs in a repo folder, or it is a 💬 walk whose
+`/inbox-zero <scope> only <gids>` names the task (a walk of the whole queue hides nothing).
 
 The task sessions run **without a terminal tab** (see below), so thirty tasks do not put
 thirty tabs in front of you. Each is told to check first whether its task is still real —

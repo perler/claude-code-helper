@@ -185,6 +185,16 @@ function check(name, cond, detail) {
   await nt.pickFromQueue('today');
   check('open in a session: both left out', tasks(lastQp).map((i) => i.task.gid).join() === '1218000000333', tasks(lastQp).map((i) => i.task.gid));
   check('open in a session: title says how many', lastQp.title === '📅 Today — 1 task · 2 open in a session, not shown', lastQp.title);
+
+  // 10. A 💬 walk of picked tasks: its /inbox-zero … only <gids> names them all (…333 here).
+  const home = path.join(tmp, 'home');
+  fs.mkdirSync(home, { recursive: true });
+  fs.writeFileSync(path.join(sessDir, '3.json'), JSON.stringify({ pid: process.pid, sessionId: 's-walk', cwd: home }));
+  const wdir = path.join(tmp, '.claude', 'projects', home.replace(/\//g, '-'));
+  fs.mkdirSync(wdir, { recursive: true });
+  fs.writeFileSync(path.join(wdir, 's-walk.jsonl'), JSON.stringify({ type: 'user', message: { role: 'user', content: '<command-message>inbox-zero</command-message>\n<command-name>/inbox-zero</command-name>\n<command-args>today only 1218000000333,1218000000999</command-args>' } }) + '\n');
+  await nt.pickFromQueue('today');
+  check('walked in a session: left out', tasks(lastQp).length === 0, tasks(lastQp).map((i) => i.task.gid));
   fs.rmSync(path.join(tmp, '.claude'), { recursive: true, force: true });
 
   fs.rmSync(tmp, { recursive: true, force: true });
