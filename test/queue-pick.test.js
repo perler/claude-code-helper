@@ -164,8 +164,8 @@ function check(name, cond, detail) {
   const labels = qpSeen.items.map((i) => i.label);
   check('waiting: title counts only the rest', qpSeen.title === '📅 Today — 3 tasks + 1 waiting', qpSeen.title);
   check('waiting: separator then the waiting task, last', labels[labels.length - 2].startsWith('🕓 BB EDV — waiting on event')
-    && qpSeen.items[labels.length - 2].kind === vscode.QuickPickItemKind.Separator && labels[labels.length - 1] === '🕓 Backup after SRV001', labels);
-  check('waiting: description gives the word without a second icon', qpSeen.items[labels.length - 1].description.startsWith('Waiting on event'), qpSeen.items[labels.length - 1].description);
+    && qpSeen.items[labels.length - 2].kind === vscode.QuickPickItemKind.Separator && labels[labels.length - 1] === '🕓', labels);
+  check('waiting: name sits in the grey description, not the label', qpSeen.items[labels.length - 1].description.startsWith('Backup after SRV001'), qpSeen.items[labels.length - 1].description);
   fs.writeFileSync(path.join(tmp, 'q.json'), JSON.stringify(queue));
 
   // 9. A task a live session already works is left out: one through its stamped folder
