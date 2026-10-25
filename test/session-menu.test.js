@@ -24,5 +24,7 @@ const cmds = pkg.contributes.commands.map((c) => c.command);
 check('commands declared', !cmds.includes('claudeHelper.newSessionHere') && cmds.includes('claudeHelper.resumeAndCompact'));
 const grp = (c) => whenFor(c).find((i) => !i.group.startsWith('inline')).group;
 check('run group: start, resume, compact', grp('claudeHelper.startClaude') === '1_run@1' && grp('claudeHelper.resumeSession') === '1_run@2' && grp('claudeHelper.resumeAndCompact') === '1_run@3');
-check('hover buttons match Favourites', ['startClaude', 'resumeSession', 'revealInExplorer'].every((c, n) => whenFor(`claudeHelper.${c}`).some((i) => i.group === `inline@${n + 1}` && i.when.includes('claudeHelper.sessions'))));
+const hover = (view, order) => order.every((c, n) => whenFor(`claudeHelper.${c}`).some((i) => i.group === `inline@${n + 1}` && i.when.includes(`view == claudeHelper.${view}`)));
+check('hover buttons in Recent Sessions: resume, start, reveal', hover('sessions', ['resumeSession', 'startClaude', 'revealInExplorer']));
+check('hover buttons in Favourites: resume, start, reveal', hover('favourites', ['resumeClaude', 'startClaude', 'revealInExplorer']));
 process.exit(failed ? 1 : 0);
