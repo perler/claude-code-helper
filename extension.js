@@ -23,7 +23,7 @@ const {
 } = require('./lib/queue');
 const { sessionTerminals } = require('./lib/session-registry');
 const {
-  SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, resumeSessionNode, resumeAndCompactNode, setHiddenSessions,
+  SessionsProvider, setExtCtx, getSessionCwd, hiddenSessions, pinnedSessions, resumeSessionNode, resumeAndCompactNode, setHiddenSessions, setPinnedSessions,
 } = require('./lib/sessions');
 const { cfg, shortHome } = require('./lib/shared');
 const { startTabLabelWatcher } = require('./lib/tablabels');
@@ -242,6 +242,15 @@ function activate(context) {
   reg('claudeHelper.clearSessionSearch', () => sessProvider.setFilter(''));
   reg('claudeHelper.resumeSession', (node) => resumeSessionNode(node));
   reg('claudeHelper.resumeAndCompact', (node) => resumeAndCompactNode(node));
+  const setPinned = async (node, on) => {
+    if (!node || node.kind !== 'session') return;
+    const pinned = pinnedSessions();
+    if (on) pinned.add(node.session.id); else pinned.delete(node.session.id);
+    await setPinnedSessions(pinned);
+    sessProvider.refresh();
+  };
+  reg('claudeHelper.pinSession', (node) => setPinned(node, true));
+  reg('claudeHelper.unpinSession', (node) => setPinned(node, false));
   reg('claudeHelper.hideSession', async (node) => {
     if (!node || node.kind !== 'session') return;
     const s = node.session;

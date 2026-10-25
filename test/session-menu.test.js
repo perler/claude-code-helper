@@ -15,6 +15,11 @@ const all = ['session', 'sessionLive', 'sessionAsana', 'sessionLiveAsana'];
 for (const c of ['startClaude', 'openTerminalHere', 'revealInExplorer', 'openFolder', 'copyPath'])
   for (const v of all) check(`${c} on ${v}`, matches(`claudeHelper.${c}`, v));
 for (const v of all) check(`resumeAndCompact ${/Live/.test(v) ? 'absent' : 'present'} on ${v}`, matches('claudeHelper.resumeAndCompact', v) === !/Live/.test(v));
+const pinned = all.map((v) => `${v}Pinned`);
+for (const c of ['startClaude', 'resumeSession', 'hideSession', 'copySessionId'])
+  for (const v of pinned) check(`${c} on ${v}`, matches(`claudeHelper.${c}`, v));
+for (const v of all) check(`pin on ${v}, unpin not`, matches('claudeHelper.pinSession', v) && !matches('claudeHelper.unpinSession', v));
+for (const v of pinned) check(`unpin on ${v}, pin not`, matches('claudeHelper.unpinSession', v) && !matches('claudeHelper.pinSession', v));
 const cmds = pkg.contributes.commands.map((c) => c.command);
 check('commands declared', !cmds.includes('claudeHelper.newSessionHere') && cmds.includes('claudeHelper.resumeAndCompact'));
 const grp = (c) => whenFor(c).find((i) => !i.group.startsWith('inline')).group;

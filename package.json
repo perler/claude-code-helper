@@ -2,7 +2,7 @@
   "name": "claude-code-helper",
   "displayName": "Claude Code Helper",
   "description": "A sidebar for running Claude Code out of VS Code: new-task box, favourites, running and recent sessions and bookmarks.",
-  "version": "0.76.2",
+  "version": "0.77.0",
   "publisher": "pat-erler",
   "engines": {
     "vscode": "^1.80.0"
@@ -246,6 +246,18 @@
         "title": "Reveal Session File in Explorer"
       },
       {
+        "command": "claudeHelper.pinSession",
+        "title": "Pin Session",
+        "icon": "$(pin)",
+        "category": "Claude Code Helper"
+      },
+      {
+        "command": "claudeHelper.unpinSession",
+        "title": "Unpin Session",
+        "icon": "$(pinned)",
+        "category": "Claude Code Helper"
+      },
+      {
         "command": "claudeHelper.hideSession",
         "title": "Hide Session",
         "icon": "$(eye-closed)",
@@ -428,7 +440,7 @@
       "view/item/context": [
         {
           "command": "claudeHelper.startClaude",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "inline@2"
         },
         {
@@ -438,22 +450,22 @@
         },
         {
           "command": "claudeHelper.resumeSession",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "inline@1"
         },
         {
           "command": "claudeHelper.revealInExplorer",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "inline@3"
         },
         {
           "command": "claudeHelper.openSessionTask",
-          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/ && claudeHelper.asanaAvailable",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Asana/ && claudeHelper.asanaAvailable",
           "group": "inline@4"
         },
         {
           "command": "claudeHelper.startClaude",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "1_run@1"
         },
         {
@@ -463,52 +475,52 @@
         },
         {
           "command": "claudeHelper.resumeSession",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "1_run@2"
         },
         {
           "command": "claudeHelper.resumeAndCompact",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?(Pinned)?$/",
           "group": "1_run@3"
         },
         {
           "command": "claudeHelper.openTerminalHere",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "2_folder@1"
         },
         {
           "command": "claudeHelper.revealInExplorer",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "2_folder@2"
         },
         {
           "command": "claudeHelper.openFolder",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "2_folder@3"
         },
         {
           "command": "claudeHelper.copyPath",
-          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.favourites && viewItem == favourite || view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "2_folder@4"
         },
         {
           "command": "claudeHelper.openSessionTask",
-          "when": "view == claudeHelper.sessions && viewItem =~ /Asana$/ && claudeHelper.asanaAvailable",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Asana/ && claudeHelper.asanaAvailable",
           "group": "3_session@1"
         },
         {
           "command": "claudeHelper.revealSessionFile",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "3_session@2"
         },
         {
           "command": "claudeHelper.copySessionId",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "3_session@3"
         },
         {
           "command": "claudeHelper.copySessionPath",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "3_session@4"
         },
         {
@@ -532,13 +544,23 @@
           "group": "4_manage@9"
         },
         {
-          "command": "claudeHelper.hideSession",
+          "command": "claudeHelper.pinSession",
           "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?$/",
+          "group": "4_manage@0"
+        },
+        {
+          "command": "claudeHelper.unpinSession",
+          "when": "view == claudeHelper.sessions && viewItem =~ /Pinned$/",
+          "group": "4_manage@0"
+        },
+        {
+          "command": "claudeHelper.hideSession",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Live)?(Asana)?(Pinned)?$/",
           "group": "4_manage@1"
         },
         {
           "command": "claudeHelper.deleteSession",
-          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?$/",
+          "when": "view == claudeHelper.sessions && viewItem =~ /^session(Asana)?(Pinned)?$/",
           "group": "4_manage@2"
         },
         {
